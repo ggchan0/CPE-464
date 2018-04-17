@@ -36,11 +36,46 @@
 #define IP_VER_HDL 0
 #define IP_TOS 1
 #define IP_LEN 2
-#define IP_TTL 8
+#define IP_TTL_VAL 8
 #define IP_PROTOCOL 9
 #define IP_HDR_CHECKSUM 10
 #define IP_SRC_ADDR 12
 #define IP_DEST_ADDR 16
+
+#define ICMP_TYPE 0
+#define ICMP_REQUEST 8
+#define ICMP_REPLY 0
+
+#define TCP_UDP_SRC_PORT 0
+#define TCP_UDP_DEST_PORT 2
+#define TCP_UDP_PORT_SIZE 2
+#define TCP_SEQ_NUM 4
+#define TCP_ACK_NUM 8
+#define TCP_ORDER_SIZE 4
+#define TCP_HEADER_LEN 12
+#define TCP_FLAGS 13
+#define TCP_WINDOW_LEN 14
+#define TCP_CHECKSUM 16
+#define TCP_PORT_HTTP 80
+
+#define TCP_PSEUDO_SIZE 12
+#define TCP_PSEUDO_SRC 0
+#define TCP_PSEUDO_DEST 4
+#define TCP_PSEUDO_RES 8
+#define TCP_PSEUDO_PROTOCOL 9
+#define TCP_PSEUDO_TCP_LEN 10
+#define TCP_PSEUDO_TCP_DATA 12
+
+#define TCP_SYN_BIT 2
+#define TCP_RST_BIT 4
+#define TCP_FIN_BIT 1
+#define TCP_ACK_BIT 16
+
+#define UDP_PORT_DNS 53
+
+#define ICMP 1
+#define TCP 6
+#define UDP 17
 
 typedef struct etherHeader {
     uint8_t MACdest[MAC_SIZE];
@@ -57,8 +92,10 @@ typedef struct arpHeader {
 } __attribute__((packed)) arpHeader;
 
 typedef struct ipHeader {
+    uint8_t raw[IP_HEADER_SIZE];
     uint8_t version;
     uint8_t headerLen;
+    uint16_t totalLen;
     uint8_t diffserv;
     uint8_t ecn;
     uint8_t ttl;
@@ -67,6 +104,27 @@ typedef struct ipHeader {
     uint8_t senderIP[IP_SIZE];
     uint8_t destIP[IP_SIZE];
 } __attribute__((packed)) ipHeader;
+
+typedef struct icmpHeader {
+    uint8_t type;
+} __attribute__((packed)) icmpHeader;
+
+typedef struct tcpHeader {
+    uint16_t sourcePort;
+    uint16_t destPort;
+    uint32_t seqNum;
+    uint32_t ackNum;
+    uint8_t headerLen;
+    uint16_t windowSize;
+    uint8_t flags;
+    uint16_t checksum;
+} __attribute__((packed)) tcpHeader;
+
+typedef struct udpHeader {
+    uint16_t sourcePort;
+    uint16_t destPort;
+} __attribute__((packed)) udpHeader;
+
 
 int inputValid(int argc, char **argv);
 
