@@ -131,3 +131,39 @@ int inputValid(int argc, char **argv);
 void readEtherHeader(etherHeader *e, const u_char *data);
 
 void processPackets(pcap_t *p);
+
+char * getType(etherHeader e);
+
+void printEtherInformation(etherHeader *e, char *type);
+
+void readARPHeader(arpHeader *arp, const u_char *data, int offset);
+
+void printARPHeader(arpHeader *arp);
+
+void readIPHeader(ipHeader *ip, const u_char *data, int offset);
+
+char * getIpProtocol(uint8_t protocol);
+
+void printIPHeader(ipHeader *ip);
+
+void readIcmpHeader(icmpHeader *icmp, const u_char *data, int offset);
+
+void printIcmpHeader(icmpHeader *icmp);
+
+void readTcpHeader(tcpHeader *tcp, const u_char *data, int offset);
+
+void printTcpFlags(uint8_t flags);
+
+int calcTcpChecksum(tcpHeader *tcp, ipHeader *ip, const u_char *data, int offset);
+
+void printTcpChecksum(tcpHeader *tcp, ipHeader *ip, const u_char *data, int offset);
+
+void printTcpHeader(tcpHeader *tcp, ipHeader *ip, const u_char *data, int offset);
+
+void readUdpHeader(udpHeader *udp, const u_char *data, int offset);
+
+void printUdpHeader(udpHeader *udp);
+
+void processIpPacket(const u_char *pkt_data, int offset, ipHeader *ip);
+
+void processPackets(pcap_t *p);
