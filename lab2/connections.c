@@ -77,8 +77,6 @@ void createInitPacket(char * buf, char * clientHandle, uint16_t * len) {
 	uint16_t packetLen = htons(PDU_LEN_SIZE + FLAG_SIZE + HANDLE_LEN_SIZE + handleLen);
 	*len = ntohs(packetLen);
 
-	printf("packetLen %u %u\n", *len, handleLen);
-
 	memcpy(buf + offset, &packetLen, PDU_LEN_SIZE);
 	offset += PDU_LEN_SIZE;
 	memcpy(buf + offset, &flag, FLAG_SIZE);
@@ -93,7 +91,6 @@ void sendInitPacketToServer(int socketNum, char * clientHandle) {
 	uint16_t len = 0;
 	createInitPacket(sendBuf, clientHandle, &len);
 	sendPacket(socketNum, sendBuf, len);
-	printf("sent init packet\n");
 }
 
 void recvConfirmationFromServer(int serverSocket) {
@@ -101,11 +98,7 @@ void recvConfirmationFromServer(int serverSocket) {
 	int messageLen = 0;
 	uint8_t flag = 0;
 
-	printf("reading init packet\n");
-
 	readFromSocket(serverSocket, buf, &messageLen);	
-
-	printf("read init packet\n");
 
 	if (messageLen == 0) {
 		printf("Server exited\n");
@@ -147,27 +140,30 @@ void processInput(char * str, char * handle, int serverSocket) {
 	token = strtok(str, space);
 
 	while (token != NULL) {
+		printf("tok %s\n", token);
 		if (tokenNum++ == 1) {
-			cmd = tolower(token[2]);
+			cmd = tolower(token[1]);
+			printf("%c\n", cmd);
 		}
 
 		switch(cmd) {
 			case 'm':
-				
+
 				break;
 			case 'b':
-				
+
 				break;
 			case 'l':
-				
+
 				break;
 			case 'e':
-				
+				sendExitPacketToServer(serverSocket);
 				break;
 			default:
-				
+
 				break;
 		}
+		break;
 
 		token = strtok(NULL, space);
 	}
@@ -199,6 +195,8 @@ void processMessage(int serverSocket) {
 		case ERR_PACKET:
 			break;
 		case C_EXIT_ACK:
+			printf("Exiting\n");
+			exit(0);
 			break;
 		case NUM_HANDLE_RES:
 			break;
@@ -219,6 +217,8 @@ void enterInteractiveMode(char * clientHandle, int serverSocket) {
 		FD_ZERO(&fdList);
 		FD_SET(STDIN_FILENO, &fdList);
 		FD_SET(serverSocket, &fdList);
+		printf("$: ");
+		fflush(stdout);
 		active = select(highestFD + 1, &fdList, NULL, NULL, NULL);
 
 		if (active < 0) {
@@ -226,9 +226,9 @@ void enterInteractiveMode(char * clientHandle, int serverSocket) {
 			exit(-1);
 		}
 
+		
+
 		if (FD_ISSET(STDIN_FILENO, &fdList)) {
-			printf("$: ");
-			fflush(stdout);
 			char *str = readline(stdin);
 			if (str == NULL) {
 			} else {
@@ -336,8 +336,6 @@ void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 	uint8_t handleLen = 0;
 	char handle[100];
 
-	printf("handling init\n");
-
 	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
 	memcpy(handle, buf + HANDLE_POS + 1, handleLen);
 	handle[handleLen] = 0;
@@ -350,11 +348,7 @@ void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 		ClientNode *node = findNode(list, clientSocket);
 		node->handle = strdup(handle);
 		sendClientInitSuccessPacket(clientSocket);
-		printf("Sent client's ack\n");
 	}
-
-
-	printf("handled init\n");
 
 }
 
@@ -397,6 +391,8 @@ void handleSocket(int clientSocket, Nodelist *list) {
 		case C_TO_C:
 			break;
 		case C_EXIT:
+			sendClientExitAckPacket(clientSocket);
+			handleClientExit(clientSocket, list);
 			break;
 		case HANDLE_REQ:
 			break;
