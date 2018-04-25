@@ -14,10 +14,14 @@ typedef struct Nodelist {
 
 void addToNodelist(Nodelist *nodelist, ClientNode *node);
 
-ClientNode *initializeClientNode(char *handle, int socketNum);
+ClientNode *initializeClientNode(int socketNum);
 
 Nodelist *initializeNodelist();
 
+void freeNode(ClientNode *temp);
+
 void freeNodelist(Nodelist *list);
+
+ClientNode *findNode(Nodelist *list, int socketNum);
 
 void removeNode(Nodelist *list, int socketNum);

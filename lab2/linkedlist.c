@@ -12,13 +12,13 @@ void addToNodelist(Nodelist *nodelist, ClientNode *node) {
     }
 }
 
-ClientNode *initializeClientNode(char *handle, int socketNum) {
+ClientNode *initializeClientNode(int socketNum) {
     ClientNode *node = malloc(sizeof(ClientNode));
     if (node == NULL) {
         fprintf(stderr, "Error trying to malloc for a CharNode\n");
         exit(EXIT_FAILURE);
     } else {
-        node->handle = strdup(handle);
+        node->handle = NULL;
         node->socketNum = socketNum;
         node->next = NULL;
     }
@@ -38,13 +38,33 @@ Nodelist *initializeNodelist() {
     return list;
 }
 
+ClientNode *findNode(Nodelist *list, int socketNum) {
+    ClientNode *temp = list->head;
+    while (temp != NULL) {
+        if (temp->socketNum == socketNum) {
+            return temp;
+        }
+        temp = temp->next;
+    }
+
+    return NULL;
+}
+
+void freeNode(ClientNode *temp) {
+    if (temp->handle != NULL) {
+        free(temp->handle);
+    }
+
+    free(temp);
+}
+
 /* LinkedList remove node algorithm found on the internet */
 void removeNode(Nodelist *list, int socketNum) {
     ClientNode *temp = list->head;
     ClientNode *prev = NULL;
     if (temp != NULL && temp->socketNum == socketNum) {
         list->head = temp->next;
-        free(temp);
+        freeNode(temp);
         return;
     }
 
@@ -59,7 +79,7 @@ void removeNode(Nodelist *list, int socketNum) {
 
     prev->next = temp->next;
 
-    free(temp);
+    freeNode(temp);
 }
 
 void freeNodelist(Nodelist *list) {
@@ -68,8 +88,7 @@ void freeNodelist(Nodelist *list) {
         while (head != NULL) {
             ClientNode *temp = head;
             head = head->next;
-            free(temp->handle);
-            free(temp);
+            freeNode(temp);
         }
     }
 

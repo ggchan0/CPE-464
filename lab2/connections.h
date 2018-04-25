@@ -20,6 +20,7 @@
 #define FLAG_POS 2
 #define HANDLE_LEN_SIZE 1
 #define HANDLE_POS 3
+#define CHAT_HEADER_SIZE 3
 
 #define INIT_PACKET 1
 #define GOOD_HANDLE 2
@@ -43,4 +44,6 @@ int setupServer(int port);
 int acceptClient(int serverSocket);
 int duplicateHandle(char * handle, Nodelist * list);
 void sendClientInitErrorPacket(int clientSocket);
-void handleClientInit(int clientSocket, Nodelist * list);
+void handleClientInit(int clientSocket, char * buf, Nodelist *list);
+void handleSocket(int clientSocket, Nodelist *list);
+void handleIncomingRequests(int serverSocket);

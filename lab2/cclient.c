@@ -33,6 +33,7 @@ int main(int argc, char * argv[]) {
 
 
 	sendInitPacketToServer(socketNum, clientHandle);
+
 	/*
 
 	recvConfirmationFromServer(serverName, serverPort);

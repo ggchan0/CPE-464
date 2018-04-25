@@ -94,20 +94,122 @@ int setupServer(int port) {
 	return serverSocket;
 }
 
+int acceptClient(int serverSocket) {
+	struct sockaddr_in6 clientInfo;
+	int clientInfoSize = sizeof(clientInfo);
+	int clientSocket;
+
+	if ((clientSocket = accept(serverSocket, (struct sockaddr *) &clientInfo, (socklen_t *) &clientInfoSize)) < 0) {
+		perror("server accept");
+		exit(-1);
+	}
+
+	return clientSocket;
+}
+
+void handleClientExit(int clientSocket, Nodelist * list) {
+	removeNode(list, clientSocket);
+	close(clientSocket);
+}
+
+int duplicateHandle(char * handle, Nodelist * list) {
+	ClientNode *temp = list->head;
+	while (temp != NULL) {
+		if (temp->handle != NULL && strcmp(temp->handle, handle) == 0) {
+			return 1;
+		} else {
+			temp = temp->next;
+		}
+	}
+
+	printf("checking handles\n");
+
+	return 0;
+}
+
+void sendClientInitErrorPacket(int clientSocket) {
+	uint16_t packetSize = htons(CHAT_HEADER_SIZE);
+	uint8_t flag = BAD_HANDLE;
+	char buf[CHAT_HEADER_SIZE];
+
+	memcpy(buf, &packetSize, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+
+	sendPacket(clientSocket, buf, ntohs(packetSize));
+}
+
+void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
+	uint8_t handleLen = 0;
+	char handle[100];
+
+	printf("handling init\n");
+
+	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
+	memcpy(handle, buf + HANDLE_POS + 1, handleLen);
+	handle[handleLen] = 0;
+
+	if (duplicateHandle(handle, list)) {
+		sendClientInitErrorPacket(clientSocket);
+		removeNode(list, clientSocket);
+		close(clientSocket);
+	} else {
+		ClientNode *node = findNode(list, clientSocket);
+		node->handle = strdup(handle);
+	}
+
+
+	printf("handled init\n");
+
+}
+
+void handleSocket(int clientSocket, Nodelist *list) {
+	char buf[MAXBUF];
+	int messageLen = 0;
+	uint8_t flag = 0;
+
+	if ((messageLen = recv(clientSocket, buf, MAXBUF, MSG_WAITALL)) < 0) {
+		perror("server recv handling client");
+		exit(-1);
+	}
+
+	if (messageLen == 0) {
+		handleClientExit(clientSocket, list);
+		return;
+	}
+
+	memcpy(&flag, buf + FLAG_POS, FLAG_SIZE);
+
+	switch(flag) {
+		case INIT_PACKET:
+			handleClientInit(clientSocket, buf, list);
+			break;
+		case BROADCAST:
+			break;
+		case C_TO_C:
+			break;
+		case C_EXIT:
+			break;
+		case HANDLE_REQ:
+			break;
+		default:
+			break;
+	}
+
+}
+
 void handleIncomingRequests(int serverSocket) {
 	Nodelist *list = initializeNodelist();
 	fd_set socketList;
 
 	while(1) {
+		printf("loop\n");
 		ClientNode *temp = list->head;
 		int highestFD = serverSocket;
 		int active;
 
-		printf("round 1\n");
 		FD_ZERO(&socketList);
 		FD_SET(serverSocket, &socketList);
 		while (temp != NULL) {
-			printf("going through linkedlist\n");
 			FD_SET(temp->socketNum, &socketList);
 			if (temp->socketNum > highestFD) {
 				highestFD = temp->socketNum;
@@ -123,78 +225,17 @@ void handleIncomingRequests(int serverSocket) {
 
 		if (FD_ISSET(serverSocket, &socketList)) {
 			int clientSocket = acceptClient(serverSocket);
-			printf("handling socket %d\n", clientSocket);
-			//handleClientInit(clientSocket, list);
+			ClientNode *newClient = initializeClientNode(clientSocket);
+			addToNodelist(list, newClient);
 		}
-		/*
+
 		temp = list->head;
 
 		while (temp != NULL) {
-			if (FD_ISSET(temp->socketNum, &socketList))
-			printf("%d\n", temp->socketNum);
-			exit(0);
-		}
-		*/
-
-
-
-	}
-}
-
-int acceptClient(int serverSocket) {
-	struct sockaddr_in6 clientInfo;
-	int clientInfoSize = sizeof(clientInfo);
-	int clientSocket;
-
-	if ((clientSocket = accept(serverSocket, (struct sockaddr *) &clientInfo, (socklen_t *) &clientInfoSize)) < 0) {
-		perror("server accept");
-		exit(-1);
-	}
-
-	printf("accepted\n");
-
-	return clientSocket;
-}
-
-int duplicateHandle(char * handle, Nodelist * list) {
-	ClientNode *temp = list->head;
-	while (temp != NULL) {
-		if (strcmp(temp->handle, handle) == 0) {
-			return 1;
-		} else {
+			if (FD_ISSET(temp->socketNum, &socketList)) {
+				handleSocket(temp->socketNum, list);
+			}
 			temp = temp->next;
 		}
 	}
-
-	return 0;
-}
-
-void sendClientInitErrorPacket(int clientSocket) {
-
-}
-
-void handleClientInit(int clientSocket, Nodelist *list) {
-	char buf[MAXBUF];
-	int messageLen = 0;
-	uint8_t handleLen = 0;
-	char handle[100];
-
-	if ((messageLen = recv(clientSocket, buf, MAXBUF, MSG_WAITALL)) < 0) {
-		perror("server recv init");
-		exit(-1);
-	}
-
-	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
-	memcpy(handle, buf + HANDLE_POS + 1, handleLen);
-	handle[handleLen] = 0;
-
-	if (duplicateHandle(handle, list)) {
-		sendClientInitErrorPacket(clientSocket);
-		close(clientSocket);
-	} else {
-		ClientNode *node = initializeClientNode(handle, clientSocket);
-		printf("%s\n", handle);
-		addToNodelist(list, node);
-	}
-
 }
