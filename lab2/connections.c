@@ -1,6 +1,50 @@
 #include "connections.h"
 #include "gethostbyname6.h"
 
+void sendPacket(int socketNum, char * sendBuf, int len) {
+	int sent = 0;
+
+	if ((sent = send(socketNum, sendBuf, len, 0)) < 0) {
+		perror("client init send");
+		exit(-1);
+	}
+}
+
+void readFromSocket(int socketNum, char * buf, int * messageLen) {
+	int bytesRead = 0;
+
+	if ((bytesRead = recv(socketNum, buf, MAXBUF, 0)) < 0) {
+		perror("server recv handling client");
+		exit(-1);
+	}
+
+	*messageLen = bytesRead;
+}
+
+char * doubleSize(char *str, int length) {
+   return realloc(str, length);
+}
+
+char *readline(FILE *file) {
+   int length = 10;
+   int index = 0;
+   char *str = malloc(sizeof(char) * length);
+   int c;
+   while ((c = fgetc(file)) != EOF && c != '\n') {
+      str[index++] = c;
+      if (index == (length - 1)) {
+         length *= 2;
+         str = doubleSize(str, length);
+      }
+   }
+   str[index] = '\0';
+   if (c == EOF) {
+      free(str);
+      str = NULL;
+   }
+   return str;
+}
+
 int setupClient(char * serverName, int port) {
 	int socketNum;
 	uint8_t *ipAddress = NULL;
@@ -26,15 +70,6 @@ int setupClient(char * serverName, int port) {
 	return socketNum;
 }
 
-void sendPacket(int socketNum, char * sendBuf, int len) {
-	int sent = 0;
-
-	if ((sent = send(socketNum, sendBuf, len, 0)) < 0) {
-		perror("client init send");
-		exit(-1);
-	}
-}
-
 void createInitPacket(char * buf, char * clientHandle, uint16_t * len) {
 	uint8_t handleLen = strlen(clientHandle);
 	uint8_t flag = INIT_PACKET;
@@ -58,6 +93,154 @@ void sendInitPacketToServer(int socketNum, char * clientHandle) {
 	uint16_t len = 0;
 	createInitPacket(sendBuf, clientHandle, &len);
 	sendPacket(socketNum, sendBuf, len);
+	printf("sent init packet\n");
+}
+
+void recvConfirmationFromServer(int serverSocket) {
+	char buf[MAXBUF];
+	int messageLen = 0;
+	uint8_t flag = 0;
+
+	printf("reading init packet\n");
+
+	readFromSocket(serverSocket, buf, &messageLen);	
+
+	printf("read init packet\n");
+
+	if (messageLen == 0) {
+		printf("Server exited\n");
+		exit(0);
+	}
+
+	memcpy(&flag, buf + FLAG_POS, FLAG_SIZE);
+
+	if (flag == BAD_HANDLE) {
+		fprintf(stderr, "Handle already in use, terminating\n");
+		exit(-1);
+	} else if (flag != GOOD_HANDLE) {
+		fprintf(stderr, "Incorrect packet return type, terminating\n");
+		exit(-1);
+	} 
+}
+
+void createExitPacket(char * buf) {
+	uint16_t packetLen = htons(CHAT_HEADER_SIZE);
+	uint8_t flag = C_EXIT;
+
+	memcpy(buf, &packetLen, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+}
+
+void sendExitPacketToServer(int socketNum) {
+	char sendBuf[MAXBUF];
+	createExitPacket(sendBuf);
+	sendPacket(socketNum, sendBuf, CHAT_HEADER_SIZE);
+	printf("sent exit packet\n");
+}
+
+void processInput(char * str, char * handle, int serverSocket) {
+	char *space = " ";
+	char *token;
+	int tokenNum = 1;
+	char cmd;
+
+	token = strtok(str, space);
+
+	while (token != NULL) {
+		if (tokenNum++ == 1) {
+			cmd = tolower(token[2]);
+		}
+
+		switch(cmd) {
+			case 'm':
+				
+				break;
+			case 'b':
+				
+				break;
+			case 'l':
+				
+				break;
+			case 'e':
+				
+				break;
+			default:
+				
+				break;
+		}
+
+		token = strtok(NULL, space);
+	}
+}
+
+void processMessage(int serverSocket) {
+	char buf[MAXBUF];
+	int messageLen = 0;
+	uint8_t flag = 0;
+
+	printf("reading something from server\n");
+
+	readFromSocket(serverSocket, buf, &messageLen);
+
+	printf("read something from server\n");
+
+	if (messageLen == 0) {
+		printf("Server exited\n");
+		exit(0);
+	}
+
+	memcpy(&flag, buf + FLAG_POS, FLAG_SIZE);
+
+	switch(flag) {
+		case BROADCAST_MESSAGE:
+			break;
+		case C_TO_C:
+			break;
+		case ERR_PACKET:
+			break;
+		case C_EXIT_ACK:
+			break;
+		case NUM_HANDLE_RES:
+			break;
+		case HANDLE_RES:
+			break;
+		default:
+			break;
+	}
+}
+
+void enterInteractiveMode(char * clientHandle, int serverSocket) {
+	fd_set fdList;
+
+	while(1) {
+		int highestFD = serverSocket;
+		int active;
+
+		FD_ZERO(&fdList);
+		FD_SET(STDIN_FILENO, &fdList);
+		FD_SET(serverSocket, &fdList);
+		active = select(highestFD + 1, &fdList, NULL, NULL, NULL);
+
+		if (active < 0) {
+			perror("client select");
+			exit(-1);
+		}
+
+		if (FD_ISSET(STDIN_FILENO, &fdList)) {
+			printf("$: ");
+			fflush(stdout);
+			char *str = readline(stdin);
+			if (str == NULL) {
+			} else {
+				processInput(str, clientHandle, serverSocket);
+			}
+			free(str);
+		}
+
+		if (FD_ISSET(serverSocket, &fdList)) {
+			processMessage(serverSocket);
+		}
+	}
 }
 
 int setupServer(int port) {
@@ -84,7 +267,7 @@ int setupServer(int port) {
 		exit(-1);
 	}
 
-    if (listen(serverSocket, BACKLOG) < 0) {
+   if (listen(serverSocket, BACKLOG) < 0) {
 		perror("server listen");
 		exit(-1);
 	}
@@ -138,6 +321,17 @@ void sendClientInitErrorPacket(int clientSocket) {
 	sendPacket(clientSocket, buf, ntohs(packetSize));
 }
 
+void sendClientInitSuccessPacket(int clientSocket) {
+	uint16_t packetSize = htons(CHAT_HEADER_SIZE);
+	uint8_t flag = GOOD_HANDLE;
+	char buf[CHAT_HEADER_SIZE];
+
+	memcpy(buf, &packetSize, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+
+	sendPacket(clientSocket, buf, ntohs(packetSize));
+}
+
 void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 	uint8_t handleLen = 0;
 	char handle[100];
@@ -155,6 +349,8 @@ void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 	} else {
 		ClientNode *node = findNode(list, clientSocket);
 		node->handle = strdup(handle);
+		sendClientInitSuccessPacket(clientSocket);
+		printf("Sent client's ack\n");
 	}
 
 
@@ -162,17 +358,30 @@ void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 
 }
 
+void sendClientExitAckPacket(int clientSocket) {
+	uint16_t packetSize = htons(CHAT_HEADER_SIZE);
+	uint8_t flag = C_EXIT_ACK;
+	char buf[CHAT_HEADER_SIZE];
+
+	memcpy(buf, &packetSize, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+
+	sendPacket(clientSocket, buf, ntohs(packetSize));
+}
+
 void handleSocket(int clientSocket, Nodelist *list) {
 	char buf[MAXBUF];
 	int messageLen = 0;
 	uint8_t flag = 0;
 
-	if ((messageLen = recv(clientSocket, buf, MAXBUF, MSG_WAITALL)) < 0) {
-		perror("server recv handling client");
-		exit(-1);
-	}
+	printf("Handling socket %d\n", clientSocket);
+
+	readFromSocket(clientSocket, buf, &messageLen);
+
+	printf("Read from socket\n");
 
 	if (messageLen == 0) {
+		printf("client exit\n");
 		handleClientExit(clientSocket, list);
 		return;
 	}
@@ -183,7 +392,7 @@ void handleSocket(int clientSocket, Nodelist *list) {
 		case INIT_PACKET:
 			handleClientInit(clientSocket, buf, list);
 			break;
-		case BROADCAST:
+		case BROADCAST_MESSAGE:
 			break;
 		case C_TO_C:
 			break;
@@ -225,6 +434,7 @@ void handleIncomingRequests(int serverSocket) {
 
 		if (FD_ISSET(serverSocket, &socketList)) {
 			int clientSocket = acceptClient(serverSocket);
+			printf("adding new socket\n");
 			ClientNode *newClient = initializeClientNode(clientSocket);
 			addToNodelist(list, newClient);
 		}

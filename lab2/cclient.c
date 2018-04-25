@@ -15,30 +15,19 @@ void checkArgs(int argc, char *argv[]) {
 	}
 }
 
-
-
 int main(int argc, char * argv[]) {
 	char *clientHandle;
-	char *serverName;
-	int serverPort;
-	int socketNum;
+	int serverSocket;
 
 	checkArgs(argc, argv);
 	clientHandle = argv[1];
-	serverName = argv[2];
-	serverPort = atoi(argv[3]);
-	socketNum = setupClient(serverName, serverPort);
+	serverSocket = setupClient(argv[2], atoi(argv[3]));
 
-	printf("%s %d\n", clientHandle, socketNum);
-
-
-	sendInitPacketToServer(socketNum, clientHandle);
-
-	/*
-
-	recvConfirmationFromServer(serverName, serverPort);
-
-	enterInteractiveMode(clientHandle, serverName, serverPort);
-	*/
+	sendInitPacketToServer(serverSocket, clientHandle);
+	
+	recvConfirmationFromServer(serverSocket);
+	
+	enterInteractiveMode(clientHandle, serverSocket);
+	
 	return 0;
 }

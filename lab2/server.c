@@ -1,6 +1,5 @@
 #include "connections.h"
 #include "server.h"
-#include "linkedlist.h"
 
 void checkArgs(int argc, char *argv[]) {
 	if (argc > 2) {
