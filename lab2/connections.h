@@ -13,7 +13,9 @@
 #include "linkedlist.h"
 
 #define BACKLOG 128
-#define MAXBUF 1024
+#define MAXBUF 2048
+#define MAX_TEXT_SIZE 200
+#define MAX_HANDLE_SIZE 100
 
 #define PDU_LEN_SIZE 2
 #define PDU_POS 0
@@ -21,6 +23,7 @@
 #define FLAG_POS 2
 #define HANDLE_LEN_SIZE 1
 #define HANDLE_POS 3
+#define HANDLE_LABEL_START 4
 #define CHAT_HEADER_SIZE 3
 #define HANDLE_RES_SIZE 4
 
@@ -37,12 +40,6 @@
 #define HANDLE_RES 12
 #define HANDLE_REQ_FIN 13
 
-#define MESSAGE 0
-#define BROADCAST 1
-#define LIST_HANDLES 2
-#define EXIT 3
-#define UNKNOWN 4
-
 int setupClient(char * serverName, int port);
 void sendPacket(int socketNum, char * sendBuf, int len);
 void readFromSocket(int socketNum, char * buf, int * messageLen);
@@ -56,5 +53,6 @@ int acceptClient(int serverSocket);
 int duplicateHandle(char * handle, Nodelist * list);
 void sendClientInitErrorPacket(int clientSocket);
 void handleClientInit(int clientSocket, char * buf, Nodelist *list);
+void handleBroadcast(int clientSocket, char * buf, Nodelist *list);
 void handleSocket(int clientSocket, Nodelist *list);
 void handleIncomingRequests(int serverSocket);

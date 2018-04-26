@@ -5,20 +5,37 @@ void sendPacket(int socketNum, char * sendBuf, int len) {
 	int sent = 0;
 
 	if ((sent = send(socketNum, sendBuf, len, 0)) < 0) {
-		perror("client init send");
+		perror("send error");
 		exit(-1);
 	}
 }
 
 void readFromSocket(int socketNum, char * buf, int * messageLen) {
 	int bytesRead = 0;
+	int bytesLeft = 0;
+	uint16_t packetLen = 0;
 
-	if ((bytesRead = recv(socketNum, buf, MAXBUF, 0)) < 0) {
-		perror("server recv handling client");
+	
+	if ((bytesRead = recv(socketNum, buf, PDU_LEN_SIZE, 0)) < 0) {
+		perror("recv error");
 		exit(-1);
 	}
 
-	*messageLen = bytesRead;
+	memcpy(&packetLen, buf, PDU_LEN_SIZE);
+	packetLen = ntohs(packetLen);
+
+	bytesLeft = packetLen - bytesRead;
+	
+	while (bytesLeft > 0) {
+		if ((bytesRead = recv(socketNum, buf + (packetLen - bytesLeft), bytesLeft, 0)) < 0) {
+			perror("recv error");
+			exit(-1);
+		}
+
+		bytesLeft -= bytesRead;
+	}
+
+	*messageLen = packetLen;
 }
 
 char * doubleSize(char *str, int length) {
@@ -116,6 +133,130 @@ void recvConfirmationFromServer(int serverSocket) {
 	} 
 }
 
+void sendMessagePacket(int serverSocket, char * handle, char * destBuf, int destBufSize, char * buf, int bytesCopied) {
+	char sendBuf[MAXBUF];
+	uint8_t handleLen = strlen(handle);
+	uint16_t packetLen = htons(CHAT_HEADER_SIZE + HANDLE_LEN_SIZE + handleLen + destBufSize + bytesCopied);
+	uint8_t flag = C_TO_C;
+	int offset = 0;
+
+	memcpy(sendBuf + PDU_POS, &packetLen, PDU_LEN_SIZE);
+	memcpy(sendBuf + FLAG_POS, &flag, FLAG_SIZE);
+	offset += CHAT_HEADER_SIZE;
+	memcpy(sendBuf + offset, &handleLen, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+	memcpy(sendBuf + offset, handle, handleLen);
+	offset += handleLen;
+	memcpy(sendBuf + offset, destBuf, destBufSize);
+	offset += destBufSize;
+	memcpy(sendBuf + offset, buf, bytesCopied);
+
+	sendPacket(serverSocket, sendBuf, ntohs(packetLen));
+}
+
+void messageServer(int serverSocket, char * handle, char * destBuf, int destBufSize, char * text) {
+	int counter = 0;
+	int bytesLeft = strlen(text);
+	while (bytesLeft > 0) {
+		char buf[MAX_TEXT_SIZE + 1];
+		int bytesCopied = 0;
+		if (bytesLeft >= MAX_TEXT_SIZE) {
+			memcpy(buf, text + counter, MAX_TEXT_SIZE);
+			counter += MAX_TEXT_SIZE;
+			bytesLeft -= MAX_TEXT_SIZE;
+			bytesCopied = MAX_TEXT_SIZE;
+		} else {
+			memcpy(buf, text + counter, bytesLeft);
+			counter += bytesLeft;
+			bytesCopied = bytesLeft;
+			bytesLeft = 0;
+		}
+		buf[bytesCopied] = 0;
+		sendMessagePacket(serverSocket, handle, destBuf, destBufSize, buf, bytesCopied + 1);
+	}
+}
+
+void parseAndSendMessage(int serverSocket, char * handle, char * buf) {
+	char *space = " ";
+	char *empty = "";
+	char *token = NULL;
+	int numDest = 0;
+
+	token = strtok(buf, space);
+	numDest = atoi(token);
+
+	if (numDest == 0) {
+		char destBuf[MAXBUF];
+		char *target = token;
+		uint8_t destHandleLen = strlen(target);
+		int destBufSize = 0;
+		numDest = 1;
+		memcpy(destBuf, &destHandleLen, HANDLE_LEN_SIZE);
+		destBufSize += HANDLE_LEN_SIZE;
+		memcpy(buf + HANDLE_LEN_SIZE, target, (int) destHandleLen);
+		destBufSize += destHandleLen;
+		messageServer(serverSocket, handle, destBuf, destBufSize, strtok(buf, empty));
+	} else {
+		int i;
+		
+	}
+}
+
+void sendBroadcastPacket(int serverSocket, char * handle, char * buf, int bytesCopied) {
+	char sendBuf[MAXBUF];
+	uint8_t handleLen = strlen(handle);
+	uint16_t packetLen = htons(CHAT_HEADER_SIZE + HANDLE_LEN_SIZE + handleLen + bytesCopied);
+	uint8_t flag = BROADCAST_MESSAGE;
+	int offset = 0;
+
+	memcpy(sendBuf + PDU_POS, &packetLen, PDU_LEN_SIZE);
+	memcpy(sendBuf + FLAG_POS, &flag, FLAG_SIZE);
+	offset += CHAT_HEADER_SIZE;
+	memcpy(sendBuf + offset, &handleLen, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+	memcpy(sendBuf + offset, handle, handleLen);
+	offset += handleLen;
+	memcpy(sendBuf + offset, buf, bytesCopied);
+
+	sendPacket(serverSocket, sendBuf, ntohs(packetLen));
+}
+
+void broadcastToServer(int serverSocket, char * handle, char * text) {
+	int counter = 0;
+	int bytesLeft = strlen(text);
+	while (bytesLeft > 0) {
+		char buf[MAX_TEXT_SIZE + 1];
+		int bytesCopied = 0;
+		if (bytesLeft >= MAX_TEXT_SIZE) {
+			memcpy(buf, text + counter, MAX_TEXT_SIZE);
+			counter += MAX_TEXT_SIZE;
+			bytesLeft -= MAX_TEXT_SIZE;
+			bytesCopied = MAX_TEXT_SIZE;
+		} else {
+			memcpy(buf, text + counter, bytesLeft);
+			counter += bytesLeft;
+			bytesCopied = bytesLeft;
+			bytesLeft = 0;
+		}
+		buf[bytesCopied] = 0;
+		sendBroadcastPacket(serverSocket, handle, buf, bytesCopied + 1);
+	}
+}
+
+void createListHandlesPacket(char * buf) {
+	uint16_t packetLen = htons(CHAT_HEADER_SIZE);
+	uint8_t flag = HANDLE_REQ;
+
+	memcpy(buf, &packetLen, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+}
+
+void sendListHandlesPacketToServer(int socketNum) {
+	char sendBuf[MAXBUF];
+	createListHandlesPacket(sendBuf);
+	sendPacket(socketNum, sendBuf, CHAT_HEADER_SIZE);
+}
+
 void createExitPacket(char * buf) {
 	uint16_t packetLen = htons(CHAT_HEADER_SIZE);
 	uint8_t flag = C_EXIT;
@@ -128,45 +269,109 @@ void sendExitPacketToServer(int socketNum) {
 	char sendBuf[MAXBUF];
 	createExitPacket(sendBuf);
 	sendPacket(socketNum, sendBuf, CHAT_HEADER_SIZE);
-	printf("sent exit packet\n");
 }
 
 void processInput(char * str, char * handle, int serverSocket) {
 	char *space = " ";
-	char *token;
+	char *empty = "";
+	char *token = NULL;
 	int tokenNum = 1;
-	char cmd;
+	char cmd = 0;
 
 	token = strtok(str, space);
 
-	while (token != NULL) {
+	if (token != NULL) {
 		printf("tok %s\n", token);
 		if (tokenNum++ == 1) {
+			if (token[0] != '%') {
+				printf("Unknown command\n");
+				return;
+			}
 			cmd = tolower(token[1]);
 			printf("%c\n", cmd);
 		}
 
 		switch(cmd) {
 			case 'm':
-
+				parseAndSendMessage(serverSocket, handle, strtok(NULL, empty));
 				break;
 			case 'b':
-
+				broadcastToServer(serverSocket, handle, strtok(NULL, empty));
 				break;
 			case 'l':
-
+				sendListHandlesPacketToServer(serverSocket);
 				break;
 			case 'e':
 				sendExitPacketToServer(serverSocket);
 				break;
 			default:
-
+				printf("Unknown command\n");
+				return;
 				break;
 		}
-		break;
 
 		token = strtok(NULL, space);
 	}
+}
+
+void receiveBroadcastMessage(char * buf) {
+	char handle[MAX_HANDLE_SIZE];
+	uint8_t handleLen = 0;
+	int offset = HANDLE_POS;
+	
+	memcpy(&handleLen, buf + offset, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+	memcpy(&handle, buf + offset, handleLen);
+	offset += handleLen;
+	printf("%s: %s\n", handle, buf + offset);
+}
+
+void processHandle(int serverSocket) {
+	uint8_t handleLen = 0;
+	int messageLen = 0;
+	char buf[MAXBUF];
+	char handle[MAX_HANDLE_SIZE];
+
+	readFromSocket(serverSocket, buf, &messageLen);
+
+	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
+
+	memcpy(handle, buf + HANDLE_LABEL_START, handleLen);
+	handle[handleLen] = 0;
+
+	printf("\t%s\n", handle);
+}
+
+void processHandleReqFin(int serverSocket) {
+	char buf[MAXBUF];
+	int messageLen = 0;
+	uint8_t flag = 0;
+
+	readFromSocket(serverSocket, buf, &messageLen);
+
+	if (messageLen == 0) {
+		printf("Server exited\n");
+		exit(0);
+	}
+
+	memcpy(&flag, buf + FLAG_POS, FLAG_SIZE);
+
+	if (flag != HANDLE_REQ_FIN) {
+		fprintf(stderr, "Bad handle request finish from server\n");
+	}
+}
+
+void processListHandles(int serverSocket, char * buf) {
+	uint32_t numHandles = 0;
+
+	memcpy(&numHandles, buf + HANDLE_POS, HANDLE_RES_SIZE);
+
+	printf("Number of clients: %u\n", ntohl(numHandles));
+	for (int i = 0; i < ntohl(numHandles); i++) {
+		processHandle(serverSocket);
+	}
+
+	processHandleReqFin(serverSocket);
 }
 
 void processMessage(int serverSocket) {
@@ -189,6 +394,7 @@ void processMessage(int serverSocket) {
 
 	switch(flag) {
 		case BROADCAST_MESSAGE:
+			receiveBroadcastMessage(buf);
 			break;
 		case C_TO_C:
 			break;
@@ -199,8 +405,7 @@ void processMessage(int serverSocket) {
 			exit(0);
 			break;
 		case NUM_HANDLE_RES:
-			break;
-		case HANDLE_RES:
+			processListHandles(serverSocket, buf);
 			break;
 		default:
 			break;
@@ -352,6 +557,32 @@ void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 
 }
 
+void handleBroadcast(int clientSocket, char * buf, Nodelist *list) {
+	char handle[MAX_HANDLE_SIZE];
+	uint16_t packetLen = 0;
+	uint8_t handleLen = 0;
+	int offset = 0;
+	ClientNode *temp = list->head;
+
+	memcpy(&packetLen, buf, PDU_LEN_SIZE);
+
+	packetLen = ntohs(packetLen);
+
+	offset += CHAT_HEADER_SIZE;
+	memcpy(&handleLen, buf + offset, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+
+	memcpy(handle, buf + offset, handleLen);
+	handle[handleLen] = 0;
+
+	while (temp != NULL) {
+		if (strcmp(temp->handle, handle) != 0) {
+			sendPacket(temp->socketNum, buf, (int) packetLen);
+		}
+		temp = temp->next;
+	}	
+}
+
 void sendClientExitAckPacket(int clientSocket) {
 	uint16_t packetSize = htons(CHAT_HEADER_SIZE);
 	uint8_t flag = C_EXIT_ACK;
@@ -364,6 +595,7 @@ void sendClientExitAckPacket(int clientSocket) {
 }
 
 void sendClientHandleResPacket(int clientSocket, Nodelist *list) {
+	char buf[CHAT_HEADER_SIZE + HANDLE_RES_SIZE];
 	uint16_t packetSize = htons(CHAT_HEADER_SIZE + HANDLE_RES_SIZE);
 	uint8_t flag = NUM_HANDLE_RES;
 	uint32_t numHandles = 0;
@@ -377,8 +609,6 @@ void sendClientHandleResPacket(int clientSocket, Nodelist *list) {
 
 	numHandles = htonl(numHandles);
 
-	char buf[CHAT_HEADER_SIZE + HANDLE_RES_SIZE];
-
 	memcpy(buf, &packetSize, PDU_LEN_SIZE);
 	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
 	offset += CHAT_HEADER_SIZE;
@@ -388,8 +618,31 @@ void sendClientHandleResPacket(int clientSocket, Nodelist *list) {
 }
 
 void sendClientHandlePacket(int clientSocket, char *handle, int len) {
-	uint8_t = strlen(node->handle);
-	uint16_t packetSize;
+	uint8_t handleLen = len;
+	uint8_t flag = HANDLE_RES;
+	uint16_t packetSize = htons(CHAT_HEADER_SIZE + HANDLE_LEN_SIZE + handleLen);
+	char buf[MAXBUF];
+	int offset = 0;
+
+	memcpy(buf, &packetSize, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+	offset += CHAT_HEADER_SIZE;
+	memcpy(buf + offset, &handleLen, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+	memcpy(buf + offset, handle, len);
+
+	sendPacket(clientSocket, buf, ntohs(packetSize));
+}
+
+void sendClientHandleFinPacket(int clientSocket) {
+	uint8_t flag = HANDLE_REQ_FIN;
+	uint16_t packetSize = htons(CHAT_HEADER_SIZE);
+	char buf[CHAT_HEADER_SIZE];
+
+	memcpy(buf, &packetSize, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+
+	sendPacket(clientSocket, buf, ntohs(packetSize));
 }
 
 void handleClientHandleRequest(int clientSocket, Nodelist *list) {
@@ -413,8 +666,6 @@ void handleSocket(int clientSocket, Nodelist *list) {
 
 	readFromSocket(clientSocket, buf, &messageLen);
 
-	printf("Read from socket\n");
-
 	if (messageLen == 0) {
 		printf("client exit\n");
 		handleClientExit(clientSocket, list);
@@ -428,6 +679,7 @@ void handleSocket(int clientSocket, Nodelist *list) {
 			handleClientInit(clientSocket, buf, list);
 			break;
 		case BROADCAST_MESSAGE:
+			handleBroadcast(clientSocket, buf, list);
 			break;
 		case C_TO_C:
 			break;
