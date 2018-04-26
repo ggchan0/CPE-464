@@ -7,3 +7,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+
+void checkArgs(int argc, char *argv[]);
+int getPortFromArgs(int argc, char *argv[]);

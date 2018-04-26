@@ -40,19 +40,51 @@
 #define HANDLE_RES 12
 #define HANDLE_REQ_FIN 13
 
-int setupClient(char * serverName, int port);
 void sendPacket(int socketNum, char * sendBuf, int len);
 void readFromSocket(int socketNum, char * buf, int * messageLen);
+
+char * doubleSize(char *str, int length);
+char *readline(FILE *file);
+
+int setupClient(char * serverName, int port);
+
 void createInitPacket(char * buf, char * clientHandle, uint16_t * len);
 void sendInitPacketToServer(int socketNum, char * clientHandle);
-void recvConfirmationFromServer(int serverSocket);
+void recvConfirmationFromServer(int serverSocket, char * clientHandle);
+void sendMessagePacket(int serverSocket, char * handle, char * destBuf, int destBufSize, char * buf, int bytesCopied);
+void messageServer(int serverSocket, char * handle, char * destBuf, int destBufSize, char * text);
+void parseAndSendMessage(int serverSocket, char * handle, char * buf);
+void sendBroadcastPacket(int serverSocket, char * handle, char * buf, int bytesCopied);
+void broadcastToServer(int serverSocket, char * handle, char * text);
+void createListHandlesPacket(char * buf);
+void sendListHandlesPacketToServer(int socketNum);
+void createExitPacket(char * buf);
+void sendExitPacketToServer(int socketNum);
+void processInput(char * str, char * handle, int serverSocket);
+void receiveBroadcastMessage(char * buf);
+void receiveMessage(char * buf);
+void receiveErrorPacket(char * buf);
+void processHandle(int serverSocket);
+void processHandleReqFin(int serverSocket);
+void processListHandles(int serverSocket, char * buf);
+void processMessage(int serverSocket);
+
 void enterInteractiveMode(char * clientHandle, int serverSocket) ;
 
 int setupServer(int port);
 int acceptClient(int serverSocket);
+void handleClientExit(int clientSocket, Nodelist * list);
 int duplicateHandle(char * handle, Nodelist * list);
 void sendClientInitErrorPacket(int clientSocket);
+void sendClientInitSuccessPacket(int clientSocket);
 void handleClientInit(int clientSocket, char * buf, Nodelist *list);
+void handleInvalidHandle(int clientSocket, char * dest);
+void handleMessage(int clientSocket, char * buf, Nodelist *list);
 void handleBroadcast(int clientSocket, char * buf, Nodelist *list);
+void sendClientExitAckPacket(int clientSocket);
+void sendClientHandleResPacket(int clientSocket, Nodelist *list);
+void sendClientHandlePacket(int clientSocket, char *handle, int len);
+void sendClientHandleFinPacket(int clientSocket);
+void handleClientHandleRequest(int clientSocket, Nodelist *list);
 void handleSocket(int clientSocket, Nodelist *list);
 void handleIncomingRequests(int serverSocket);

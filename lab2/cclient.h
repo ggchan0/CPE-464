@@ -9,3 +9,4 @@
 #include <netdb.h>
 
 void checkArgs(int argc, char *argv[]);
+void checkHandle(char * clientHandle);

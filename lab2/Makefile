@@ -1,3 +1,5 @@
+all : cclient server
+
 cclient : cclient.o connections.o gethostbyname6.o linkedlist.o
 	gcc -Wall -pedantic -std=gnu99 cclient.o connections.o gethostbyname6.o linkedlist.o -o cclient
 

@@ -21,6 +21,11 @@ void readFromSocket(int socketNum, char * buf, int * messageLen) {
 		exit(-1);
 	}
 
+	if (bytesRead == 0) {
+		*messageLen = packetLen;
+		return;
+	}
+
 	memcpy(&packetLen, buf, PDU_LEN_SIZE);
 	packetLen = ntohs(packetLen);
 
@@ -110,7 +115,7 @@ void sendInitPacketToServer(int socketNum, char * clientHandle) {
 	sendPacket(socketNum, sendBuf, len);
 }
 
-void recvConfirmationFromServer(int serverSocket) {
+void recvConfirmationFromServer(int serverSocket, char * clientHandle) {
 	char buf[MAXBUF];
 	int messageLen = 0;
 	uint8_t flag = 0;
@@ -125,7 +130,7 @@ void recvConfirmationFromServer(int serverSocket) {
 	memcpy(&flag, buf + FLAG_POS, FLAG_SIZE);
 
 	if (flag == BAD_HANDLE) {
-		fprintf(stderr, "Handle already in use, terminating\n");
+		fprintf(stderr, "Handle already in use, %s\n", clientHandle);
 		exit(-1);
 	} else if (flag != GOOD_HANDLE) {
 		fprintf(stderr, "Incorrect packet return type, terminating\n");
@@ -180,9 +185,11 @@ void parseAndSendMessage(int serverSocket, char * handle, char * buf) {
 	char *space = " ";
 	char *empty = "";
 	char *token = NULL;
-	int numDest = 0;
+	char *text = NULL;
+	uint8_t numDest = 0;
 
 	token = strtok(buf, space);
+
 	numDest = atoi(token);
 
 	if (numDest == 0) {
@@ -191,14 +198,41 @@ void parseAndSendMessage(int serverSocket, char * handle, char * buf) {
 		uint8_t destHandleLen = strlen(target);
 		int destBufSize = 0;
 		numDest = 1;
-		memcpy(destBuf, &destHandleLen, HANDLE_LEN_SIZE);
+		memcpy(destBuf, &numDest, HANDLE_LEN_SIZE);
 		destBufSize += HANDLE_LEN_SIZE;
-		memcpy(buf + HANDLE_LEN_SIZE, target, (int) destHandleLen);
+		memcpy(destBuf + HANDLE_LEN_SIZE, &destHandleLen, HANDLE_LEN_SIZE);
+		destBufSize += HANDLE_LEN_SIZE;
+		memcpy(destBuf + HANDLE_LEN_SIZE * 2, target, (int) destHandleLen);
 		destBufSize += destHandleLen;
-		messageServer(serverSocket, handle, destBuf, destBufSize, strtok(buf, empty));
+		
+		text = strtok(NULL, empty);
+		if (text == NULL) {
+			text = "\n";
+		}
+
+		messageServer(serverSocket, handle, destBuf, destBufSize, text);
+	} else if (numDest > 9 || numDest < 0) {
+		fprintf(stderr, "Invalid number of handles\n");
 	} else {
 		int i;
-		
+		int offset = 0;
+		char destBuf[MAXBUF];
+		memcpy(destBuf, &numDest, HANDLE_LEN_SIZE);
+		offset += HANDLE_LEN_SIZE;
+		for (i = 0; i < numDest; i++) {
+			char * dest = strtok(NULL, space);
+			uint8_t destLen = strlen(dest);
+			memcpy(destBuf + offset, &destLen, HANDLE_LEN_SIZE);
+			offset += HANDLE_LEN_SIZE;
+			memcpy(destBuf + offset, dest, (int) destLen);
+			offset += destLen;
+		}
+		text = strtok(NULL, empty);
+		if (text == NULL) {
+			text = "\n";
+		}
+
+		messageServer(serverSocket, handle, destBuf, offset, text);
 	}
 }
 
@@ -224,6 +258,7 @@ void sendBroadcastPacket(int serverSocket, char * handle, char * buf, int bytesC
 void broadcastToServer(int serverSocket, char * handle, char * text) {
 	int counter = 0;
 	int bytesLeft = strlen(text);
+
 	while (bytesLeft > 0) {
 		char buf[MAX_TEXT_SIZE + 1];
 		int bytesCopied = 0;
@@ -275,20 +310,19 @@ void processInput(char * str, char * handle, int serverSocket) {
 	char *space = " ";
 	char *empty = "";
 	char *token = NULL;
+	char *text = NULL;
 	int tokenNum = 1;
 	char cmd = 0;
 
 	token = strtok(str, space);
 
 	if (token != NULL) {
-		printf("tok %s\n", token);
 		if (tokenNum++ == 1) {
 			if (token[0] != '%') {
-				printf("Unknown command\n");
+				printf("Invalid command\n");
 				return;
 			}
 			cmd = tolower(token[1]);
-			printf("%c\n", cmd);
 		}
 
 		switch(cmd) {
@@ -296,7 +330,11 @@ void processInput(char * str, char * handle, int serverSocket) {
 				parseAndSendMessage(serverSocket, handle, strtok(NULL, empty));
 				break;
 			case 'b':
-				broadcastToServer(serverSocket, handle, strtok(NULL, empty));
+				text = strtok(NULL, empty);
+				if (text == NULL) {
+					text = "\n";
+				}
+				broadcastToServer(serverSocket, handle, text);
 				break;
 			case 'l':
 				sendListHandlesPacketToServer(serverSocket);
@@ -305,7 +343,7 @@ void processInput(char * str, char * handle, int serverSocket) {
 				sendExitPacketToServer(serverSocket);
 				break;
 			default:
-				printf("Unknown command\n");
+				printf("Invalid command\n");
 				return;
 				break;
 		}
@@ -326,6 +364,44 @@ void receiveBroadcastMessage(char * buf) {
 	printf("%s: %s\n", handle, buf + offset);
 }
 
+void receiveMessage(char * buf) {
+	uint8_t handleLen = 0;
+	uint8_t numHandles = 0;
+	char handle[MAX_HANDLE_SIZE];
+	int offset = 0;
+	int i = 0;
+
+	offset += HANDLE_POS;
+	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+	memcpy(handle, buf + HANDLE_LABEL_START, (int) handleLen);
+	handle[handleLen] = 0;
+	offset += handleLen;
+	memcpy(&numHandles, buf + offset, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+
+	for (i = 0; i < numHandles; i++) {
+		uint8_t destLen = 0;
+
+		memcpy(&destLen, buf + offset, HANDLE_LEN_SIZE);
+		offset += destLen + HANDLE_LEN_SIZE;
+	}
+
+	printf("%s: %s\n", handle, buf + offset);
+}
+
+void receiveErrorPacket(char * buf) {
+	uint8_t handleLen = 0;
+	char handle[MAX_HANDLE_SIZE];
+
+	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
+
+	memcpy(handle, buf + HANDLE_LABEL_START, (int) handleLen);
+	handle[handleLen] = 0;
+
+	printf("Client with handle %s does not exist\n", handle);
+}
+
 void processHandle(int serverSocket) {
 	uint8_t handleLen = 0;
 	int messageLen = 0;
@@ -333,6 +409,11 @@ void processHandle(int serverSocket) {
 	char handle[MAX_HANDLE_SIZE];
 
 	readFromSocket(serverSocket, buf, &messageLen);
+
+	if (messageLen == 0) {
+		printf("Server terminated\n");
+		exit(0);
+	}
 
 	memcpy(&handleLen, buf + HANDLE_POS, HANDLE_LEN_SIZE);
 
@@ -350,7 +431,7 @@ void processHandleReqFin(int serverSocket) {
 	readFromSocket(serverSocket, buf, &messageLen);
 
 	if (messageLen == 0) {
-		printf("Server exited\n");
+		printf("Server terminated\n");
 		exit(0);
 	}
 
@@ -379,14 +460,10 @@ void processMessage(int serverSocket) {
 	int messageLen = 0;
 	uint8_t flag = 0;
 
-	printf("reading something from server\n");
-
 	readFromSocket(serverSocket, buf, &messageLen);
 
-	printf("read something from server\n");
-
 	if (messageLen == 0) {
-		printf("Server exited\n");
+		printf("Server terminated\n");
 		exit(0);
 	}
 
@@ -397,8 +474,10 @@ void processMessage(int serverSocket) {
 			receiveBroadcastMessage(buf);
 			break;
 		case C_TO_C:
+			receiveMessage(buf);
 			break;
 		case ERR_PACKET:
+			receiveErrorPacket(buf);
 			break;
 		case C_EXIT_ACK:
 			printf("Exiting\n");
@@ -477,7 +556,7 @@ int setupServer(int port) {
 		exit(-1);
 	}
 
-	printf("Server Port Number %d \n", ntohs(server.sin6_port));
+	printf("Server is using port %d \n", ntohs(server.sin6_port));
 
 	return serverSocket;
 }
@@ -509,8 +588,6 @@ int duplicateHandle(char * handle, Nodelist * list) {
 			temp = temp->next;
 		}
 	}
-
-	printf("checking handles\n");
 
 	return 0;
 }
@@ -553,6 +630,68 @@ void handleClientInit(int clientSocket, char * buf, Nodelist *list) {
 		ClientNode *node = findNode(list, clientSocket);
 		node->handle = strdup(handle);
 		sendClientInitSuccessPacket(clientSocket);
+	}
+
+}
+
+void handleInvalidHandle(int clientSocket, char * dest) {
+	char buf[MAXBUF];
+	uint8_t flag = ERR_PACKET;
+	uint8_t handleLen = strlen(dest);
+	uint16_t packetLen = htons(CHAT_HEADER_SIZE + HANDLE_LEN_SIZE + handleLen);
+
+	memcpy(buf, &packetLen, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+	memcpy(buf + HANDLE_POS, &handleLen, HANDLE_LEN_SIZE);
+	memcpy(buf + HANDLE_LABEL_START, dest, handleLen);
+
+	sendPacket(clientSocket, buf, (int) ntohs(packetLen));
+
+}
+
+void handleMessage(int clientSocket, char * buf, Nodelist *list) {
+	char handle[MAX_HANDLE_SIZE];
+	uint16_t packetLen = 0;
+	uint8_t handleLen = 0;
+	uint8_t numDests = 0;
+	int offset = 0;
+
+	memcpy(&packetLen, buf, PDU_LEN_SIZE);
+
+	packetLen = ntohs(packetLen);
+
+	offset += CHAT_HEADER_SIZE;
+	memcpy(&handleLen, buf + offset, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+
+	memcpy(handle, buf + offset, handleLen);
+	handle[handleLen] = 0;
+
+	offset += handleLen;
+	memcpy(&numDests, buf + offset, HANDLE_LEN_SIZE);
+	offset += HANDLE_LEN_SIZE;
+
+	for (int i = 0; i < numDests; i++) {
+		char dest[MAX_HANDLE_SIZE];
+		uint8_t tempHandleLen = 0;
+		ClientNode *temp = list->head;
+		int invalidHandle = 1;
+		memcpy(&tempHandleLen, buf + offset, HANDLE_LEN_SIZE);
+		offset += HANDLE_LEN_SIZE;
+		memcpy(dest, buf + offset, tempHandleLen);
+		dest[tempHandleLen] = 0;
+		offset += tempHandleLen;
+		while (temp != NULL) {
+			if (strcmp(temp->handle, dest) == 0) {
+				sendPacket(temp->socketNum, buf, (int) packetLen);
+				invalidHandle = 0;
+			}
+			temp = temp->next;
+		}
+
+		if (invalidHandle) {
+			handleInvalidHandle(clientSocket, dest);
+		}
 	}
 
 }
@@ -662,12 +801,9 @@ void handleSocket(int clientSocket, Nodelist *list) {
 	int messageLen = 0;
 	uint8_t flag = 0;
 
-	printf("Handling socket %d\n", clientSocket);
-
 	readFromSocket(clientSocket, buf, &messageLen);
 
 	if (messageLen == 0) {
-		printf("client exit\n");
 		handleClientExit(clientSocket, list);
 		return;
 	}
@@ -682,6 +818,7 @@ void handleSocket(int clientSocket, Nodelist *list) {
 			handleBroadcast(clientSocket, buf, list);
 			break;
 		case C_TO_C:
+			handleMessage(clientSocket, buf, list);
 			break;
 		case C_EXIT:
 			sendClientExitAckPacket(clientSocket);
@@ -701,7 +838,6 @@ void handleIncomingRequests(int serverSocket) {
 	fd_set socketList;
 
 	while(1) {
-		printf("loop\n");
 		ClientNode *temp = list->head;
 		int highestFD = serverSocket;
 		int active;
@@ -724,7 +860,6 @@ void handleIncomingRequests(int serverSocket) {
 
 		if (FD_ISSET(serverSocket, &socketList)) {
 			int clientSocket = acceptClient(serverSocket);
-			printf("adding new socket\n");
 			ClientNode *newClient = initializeClientNode(clientSocket);
 			addToNodelist(list, newClient);
 		}

@@ -18,7 +18,7 @@ int getPortFromArgs(int argc, char *argv[]) {
 }
 
 int main(int argc, char * argv[]) {
-    int serverSocket = 0;
+   int serverSocket = 0;
 	int portNumber;
 
 	checkArgs(argc, argv);
@@ -27,11 +27,5 @@ int main(int argc, char * argv[]) {
 	serverSocket = setupServer(portNumber);
 
 	handleIncomingRequests(serverSocket);
-
-	/*
-	clientSocket = acceptClient(serverSocket);
-
-	handleInitPacket(clientSocket);
-	*/
 	return 0;
 }
