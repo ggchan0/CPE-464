@@ -363,6 +363,47 @@ void sendClientExitAckPacket(int clientSocket) {
 	sendPacket(clientSocket, buf, ntohs(packetSize));
 }
 
+void sendClientHandleResPacket(int clientSocket, Nodelist *list) {
+	uint16_t packetSize = htons(CHAT_HEADER_SIZE + HANDLE_RES_SIZE);
+	uint8_t flag = NUM_HANDLE_RES;
+	uint32_t numHandles = 0;
+	ClientNode *temp = list->head;
+	int offset = 0;
+
+	while (temp != NULL) {
+		numHandles++;
+		temp = temp->next;
+	}
+
+	numHandles = htonl(numHandles);
+
+	char buf[CHAT_HEADER_SIZE + HANDLE_RES_SIZE];
+
+	memcpy(buf, &packetSize, PDU_LEN_SIZE);
+	memcpy(buf + FLAG_POS, &flag, FLAG_SIZE);
+	offset += CHAT_HEADER_SIZE;
+	memcpy(buf + offset, &numHandles, HANDLE_RES_SIZE);
+
+	sendPacket(clientSocket, buf, ntohs(packetSize));
+}
+
+void sendClientHandlePacket(int clientSocket, char *handle, int len) {
+	uint8_t = strlen(node->handle);
+	uint16_t packetSize;
+}
+
+void handleClientHandleRequest(int clientSocket, Nodelist *list) {
+	ClientNode *temp = list->head;
+	
+	sendClientHandleResPacket(clientSocket, list);
+	while (temp != NULL) {
+		sendClientHandlePacket(clientSocket, temp->handle, strlen(temp->handle));
+		temp = temp->next;
+	}
+
+	sendClientHandleFinPacket(clientSocket);
+}
+
 void handleSocket(int clientSocket, Nodelist *list) {
 	char buf[MAXBUF];
 	int messageLen = 0;
@@ -395,6 +436,7 @@ void handleSocket(int clientSocket, Nodelist *list) {
 			handleClientExit(clientSocket, list);
 			break;
 		case HANDLE_REQ:
+			handleClientHandleRequest(clientSocket, list);
 			break;
 		default:
 			break;
