@@ -1,0 +1,24 @@
+
+all : rcopy server
+
+rcopy : rcopy.o networks.o gethostbyname.o  connections.o
+	gcc -Wall -pedantic -std=gnu99 rcopy.o networks.o gethostbyname.o connections.o -o rcopy -l:libcpe464_64.2.17.a
+
+server :
+
+rcopy.o : rcopy.c
+	gcc -Wall -pedantic -std=gnu99 rcopy.c -c -l:libcpe464_64.2.17.a
+
+networks.o : networks.c networks.h
+    gcc -Wall -pedantic -std=gnu99 networks.c -c
+
+connections.o : connections.h connections.c
+	gcc -Wall -pedantic -std=gnu99 connections.c -c
+
+gethostbyname.o : gethostbyname.h gethostbyname.c
+	gcc -Wall -pedantic -std=gnu99 gethostbyname.c -c
+
+clean :
+	rm *.o
+	rm rcopy
+	rm server
