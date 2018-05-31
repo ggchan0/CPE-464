@@ -67,7 +67,7 @@ echo:
 %.o: %.c $(HFILES) 
 	@echo "-------------------------------"
 	@echo "*** Building $@"
-	$(CC) -c $(CFLAGS) $< -o $@ $(LIBS1)
+	$(CC) -c $(CFLAGS) $< -o $@ $(LIBS1) $(LIBNAME) $(LIBS)
 
 rcopy$(FILE): rcopy.o  $(HFILES) $(OBJS)
 	@echo "-------------------------------"

@@ -13,8 +13,4 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
-typedef struct connection {
-    int sk_num;
-    struct sockaddr_in remote;
-    uint32_t len;
-} __attribute__((packed)) Connection;
+

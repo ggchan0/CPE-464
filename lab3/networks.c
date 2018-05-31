@@ -1,6 +1,7 @@
 
 // Hugh Smith April 2017
 // Network code to support TCP/UDP client and server connections
+// Code taken from Stop and Wait design and modified for Selective Reject
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,55 +19,121 @@
 
 #include "networks.h"
 #include "gethostbyname.h"
+#include "cpe464.h"
 
-int safeRecvfrom(int socketNum, void * buf, int len, int flags, struct sockaddr *srcAddr, int * addrLen)
-{
-	int returnValue = 0;
-	if ((returnValue = recvfrom(socketNum, buf, (size_t) len, flags, srcAddr, (socklen_t *) addrLen)) < 0)
-	{
-		perror("recvfrom: ");
+int safeSend(uint8_t *packet, uint32_t len, Connection *connection) {
+	int send_len = 0;
+	
+	if ((send_len = sendtoErr(connection->sk_num, packet, len, 0, (struct sockaddr *) &(connection->remote), connection->len)) < 0) {
+		perror("in send_buf(), sendto() call");
 		exit(-1);
+	}
+
+	return send_len;
+}
+
+int safeRecv(int sk_num, char *data_buf, int len, Connection *connection) {
+	int recv_len = 0;
+	uint32_t remote_len = sizeof(struct sockaddr_in);
+
+	if ((recv_len = recvfrom(sk_num, data_buf, len, 0, (struct sockaddr *) &(connection->remote), &remote_len)) < 0) {
+		perror("recv_buf, recvfrom");
+		exit(-1);
+	}
+
+	connection->len = remote_len;
+
+	return recv_len;
+}
+
+int sendBuf(uint8_t *buf, uint32_t len, Connection *connection, uint8_t flag, uint32_t seq_num, uint8_t * packet) {
+	uint32_t sentLen = 0;sizeof(Header);
+	uint32_t sendingLen = 0;
+
+	if (len > 0) {
+		memcpy(&packet[HEADER_SIZE], buf, len);
+	}
+
+	sendingLen = createHeader(len, flag, seq_num, packet);
+
+	sentLen = safeSend(packet, sendingLen, connection);
+
+	return sentLen;
+}
+
+int recv_buf(uint8_t *buf, int len, int sk_num, Connection *connection, uint8_t *flag, int *seq_num) {
+	char data_buf[MAX_LEN];
+	int recv_len = 0;
+	int dataLen = 0;
+
+	recv_len = safeRecv(sk_num, data_buf, len, connection);
+
+	dataLen = retrieveHeader(data_buf, recv_len, flag, seq_num);
+
+	if (dataLen > 0) {
+		memcpy(buf, &data_buf[HEADER_SIZE], dataLen);
+	}
+
+	return dataLen;
+}
+
+int createHeader(uint32_t len, uint8_t flag, uint32_t seq_num, uint8_t *packet) {
+	Header *aHeader = (Header *) packet;
+	uint16_t checksum = 0;
+
+	seq_num = htonl(seq_num);
+	memcpy(&(aHeader->seq_num), &seq_num, sizeof(seq_num));
+
+	aHeader->flag = flag;
+
+	memset(&(aHeader->checksum), 0, sizeof(checksum));
+	checksum = in_cksum((unsigned short *) packet, len + sizeof(Header));
+	memcpy(&(aHeader->checksum), &checksum, sizeof(checksum));
+
+	return len + HEADER_SIZE;
+}
+
+int retrieveHeader(char *data_buf, int recv_len, uint8_t *flag, uint32_t *seq_num) {
+	Header *aHeader = (Header *) data_buf;
+	int returnValue = 0;
+
+	if (in_cksum((unsigned short*) data_buf, recv_len) != 0) {
+		returnValue = CRC_ERROR;
+	} else {
+		*flag = aHeader->flag;
+		memcpy(seq_num, &(aHeader->seq_num), sizeof(aHeader->seq_num));
+		*seq_num = ntohl(*seq_num);
+
+		returnValue = recv_len - sizeof(Header);
 	}
 
 	return returnValue;
 }
 
-int safeSendto(int socketNum, void * buf, int len, int flags, struct sockaddr *srcAddr, int addrLen)
-{
-	int returnValue = 0;
-	if ((returnValue = sendto(socketNum, buf, (size_t) len, flags, srcAddr, (socklen_t) addrLen)) < 0)
-	{
-		perror("sendto: ");
-		exit(-1);
+/*
+	Returns:
+	doneState if calling this exceeds MAX_TRIES
+	selectTimeoutState if the select times out
+	dataReadyState if select returns indicating that data is ready for read
+*/
+int processSelect(Connection *client, int *retryCount, int selectTimeoutState, int dataReadyState, int doneState) {
+	int returnValue = dataReadyState;
+
+	(*retryCount)++;
+	if (*retryCount > MAX_TRIES) {
+		printf("Sent data %d times, no ACK, client is probably gone", MAX_TRIES);
+		returnValue = doneState;
+	} else {
+		if (select_call(client->sk_num, SHORT_TIME, 0, NOT_NULL) == 1) {
+			*retryCount = 0;
+			returnValue = dataReadyState;
+		} else {
+			returnValue = selectTimeoutState;
+		}
 	}
 
 	return returnValue;
 }
-
-int safeRecv(int socketNum, void * buf, int len, int flags)
-{
-	int returnValue = 0;
-	if ((returnValue = recv(socketNum, buf, (size_t) len, flags)) < 0)
-	{
-		perror("recv: ");
-		exit(-1);
-	}
-
-	return returnValue;
-}
-
-int safeSend(int socketNum, void * buf, int len, int flags)
-{
-	int returnValue = 0;
-	if ((returnValue = send(socketNum, buf, (size_t) len, flags)) < 0)
-	{
-		perror("send: ");
-		exit(-1);
-	}
-
-	return returnValue;
-}
-
 
 // This function sets the server socket. The function returns the server
 // socket number and prints the port number to the screen.
@@ -132,30 +199,28 @@ int udpClientSetup(char *hostname, int portNumber, Connection *connection) {
 	return 0;
 }
 
-int setupUdpClientToServer(struct sockaddr_in6 *server, char * hostName, int portNumber)
-{
-	// currently only setup for IPv4
-	int socketNum = 0;
-	char ipString[INET6_ADDRSTRLEN];
-	uint8_t * ipAddress = NULL;
+int select_call(int sk_num, int sec, int microsec, int set_null) {
+	fd_set fdvar;
+	struct timeval aTimeout;
+	struct timeval *timeout = NULL;
 
-	// create the socket
-	if ((socketNum = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
-	{
-		perror("socket() call error");
+	if (set_null == NOT_NULL) {
+		aTimeout.tv_sec = sec;
+		aTimeout.tv_usec = microsec;
+		timeout = &aTimeout;
+	}
+
+	FD_ZERO(&fdvar);
+	FD_SET(sk_num, &fdvar);
+
+	if (select(sk_num + 1, (fd_set *) &fdvar, (fd_set *) 0, (fd_set *) 0, timeout) < 0) {
+		perror("select");
 		exit(-1);
 	}
 
-	if ((ipAddress = gethostbyname6(hostName, server)) == NULL)
-	{
-		exit(-1);
+	if (FD_ISSET(sk_num, &fdvar)) {
+		return 1;
+	} else {
+		return 0;
 	}
-
-	server->sin6_port = ntohs(portNumber);
-	server->sin6_family = AF_INET6;
-
-	inet_ntop(AF_INET6, ipAddress, ipString, sizeof(ipString));
-	printf("Server info - IP: %s Port: %d \n", ipString, portNumber);
-
-	return socketNum;
 }
