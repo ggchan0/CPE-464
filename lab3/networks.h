@@ -26,7 +26,6 @@
 #define CRC_ERROR -1
 
 #define START_SEQ_NUM 1
-#define SIZE_OF_BUF_SIZE 4
 
 #define MAX_TRIES 10
 #define LONG_TIME 10

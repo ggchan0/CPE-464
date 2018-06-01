@@ -34,7 +34,7 @@ int safeSend(uint8_t *packet, uint32_t len, Connection *connection) {
 
 int safeRecv(int sk_num, char *data_buf, int len, Connection *connection) {
 	int recv_len = 0;
-	uint32_t remote_len = sizeof(struct sockaddr_in);
+	uint32_t remote_len = sizeof(struct sockaddr_in6);
 
 	if ((recv_len = recvfrom(sk_num, data_buf, len, 0, (struct sockaddr *) &(connection->remote), &remote_len)) < 0) {
 		perror("recv_buf, recvfrom");

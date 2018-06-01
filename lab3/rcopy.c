@@ -40,7 +40,6 @@ int main(int argc, char **argv) {
     sendErr_init(atof(argv[5]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
 
     while (state != DONE) {
-        printf("state %d\n", state);
         switch(state) {
             case START_STATE:
                 state = startConnection(argv, &server);
@@ -49,6 +48,7 @@ int main(int argc, char **argv) {
                 state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]), &server);
                 break;
             case SEND_DATA:
+                exit(0);
                 break;
             case DONE:
                 break;
@@ -107,7 +107,6 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
 
     if ((returnValue = processSelect(server, &retryCount, FILENAME, SEND_DATA, DONE)) == SEND_DATA) {
         recv_check = recv_buf(packet, MAX_LEN, server->sk_num, server, &flag, &seq_num);
-        printf("here3\n");
         if (recv_check == CRC_ERROR) {
             returnValue = FILENAME;
         }
