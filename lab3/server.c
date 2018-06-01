@@ -90,6 +90,9 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
             case START:
                 state = FILENAME;
                 break;
+            case FILENAME:
+                state = filename(client, buf, recv_len, data_file, buf_size);
+                break;
             default:
                 state = DONE;
                 break;
@@ -98,11 +101,36 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
 
 }
 
+STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, int *buf_size) {
+    uint8_t response;
+    char fname[MAX_LEN];
+    STATE returnValue = DONE;
+
+    memcpy(buf_size, buf, SIZE_OF_BUF_SIZE);
+    *buf_size = ntohl(*buf_size);
+    memcpy(fname, &buf[sizeof(*buf_size)], recv_len - SIZE_OF_BUF_SIZE);
+    if ((client->sk_num = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        perror("filename, open client socket");
+        exit(-1);
+    }
+
+    if (((*data_file) = open(fname, O_RDONLY)) < 0) {
+        send_buf(&response, 0, client, FNAME_BAD, 0, buf);
+    }
+}
+
 int processArgs(int argc, char **argv) {
     int portNumber = 0;
+    double errRate = 0.0;
 
     if (argc < 2 || argc > 3) {
         printf("Usage %s error_rate [port_number]\n", argv[0]);
+        exit(-1);
+    }
+
+    errRate = atof(argv[1]);
+    if (errRate < 0 || errRate > 1) {
+        printf("Error rate must be between 0 and 1, and is %.2f\n", errRate);
         exit(-1);
     }
 
