@@ -29,15 +29,21 @@ enum State {
 
 int startConnection(char **argv, Connection *server);
 int sendFilename(char *filename, int bufSize, int windowSize, Connection *server);
+STATE sendData(Connection *server, int data_file, int *expected_seq_num, Window *window);
 void process_args(int argc, char **argv);
 
 int main(int argc, char **argv) {
     int outFd = 0;
+    int data_file = 0;
+    int expected_seq_num = START_SEQ_NUM;
     STATE state = START_STATE;
     Connection server;
+    Window window;
     server.sk_num = 0;
     process_args(argc, argv);
+    data_file = open(argv[1], O_RDONLY);
     sendErr_init(atof(argv[5]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
+    initWindow(&window, atoi(argv[2]), atoi(argv[3]));
 
     while (state != DONE) {
         switch(state) {
@@ -48,6 +54,7 @@ int main(int argc, char **argv) {
                 state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]), &server);
                 break;
             case SEND_DATA:
+                state = sendData(&server, data_file, &expected_seq_num, &window);
                 exit(0);
                 break;
             case DONE:
@@ -56,7 +63,7 @@ int main(int argc, char **argv) {
             default:
                 printf("ERROR - in default state\n");
                 break;
-        }
+        }   
     }
 
     return 0;
@@ -113,11 +120,20 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
             printf("Error during file open of %s on server\n", filename);
             returnValue = DONE;
         } else if (flag == FILENAME_RES) {
+            printf("Connection good!\n");
             returnValue = SEND_DATA;
         }
     }
 
     return returnValue;
+}
+
+STATE sendData(Connection *server, int data_file, int *expected_seq_num, Window *window) {
+    uint8_t response = 0;
+    uint8_t packet[MAX_LEN];
+    sendBuf(&response, 0, server, DATA, 0, packet);
+
+    return DONE;
 }
 
 void process_args(int argc, char **argv) {

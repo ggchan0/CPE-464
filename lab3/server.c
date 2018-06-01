@@ -24,13 +24,15 @@
 typedef enum State STATE;
 
 enum State {
-    START, DONE, FILENAME, RECV_DATA
+    START, DONE, FILENAME, ACK_CLIENT, RECV_DATA
 };
 
 
 void processServer(int sk_num);
 void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client);
-STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size);
+STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size, Window *window);
+STATE ackClient(Connection *client, uint8_t *buf, int *data_file);
+STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount, int *expected_seq_num);
 int processArgs(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -88,6 +90,8 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
     uint32_t buf_size = 0;
     uint32_t window_size = 0;
     uint32_t seq_num = START_SEQ_NUM;
+    int data_received = 0;
+    static int retryCount = 0;
     Window window;
 
     client->remote.sin6_family = AF_INET6;
@@ -98,10 +102,12 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
                 state = FILENAME;
                 break;
             case FILENAME:
-                state = filename(client, buf, recv_len, &data_file, &buf_size, &window_size);
+                state = filename(client, buf, recv_len, &data_file, &buf_size, &window_size, &window);
                 break;
+            case ACK_CLIENT:
+                state = ackClient(client, buf, &data_file);
             case RECV_DATA:
-                //state = recv_data(client, buf, &data_file, &window);
+                state = recv_data(client, buf, &data_file, &data_received, &window, &retryCount, &seq_num);
                 break;
             default:
                 state = DONE;
@@ -109,9 +115,11 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
         }
     }
 
+    printf("Child exiting\n");
+    exit(0);
 }
 
-STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size) {
+STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size, Window *window) {
     uint8_t response = 0;
     char fname[MAX_LEN];
     STATE returnValue = DONE;
@@ -133,6 +141,19 @@ STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, u
 
     *data_file = open(fname, O_CREAT | O_TRUNC | O_WRONLY, 0600);
 
+    initWindow(window, *buf_size, *window_size);
+
+    returnValue = ACK_CLIENT;
+
+    return returnValue;
+}
+
+STATE ackClient(Connection *client, uint8_t *buf, int *data_file) {
+    uint8_t response = 0;
+    int returnValue = 0;
+
+    printf("sending ack to client\n");
+
     if (*data_file > 0) {
         sendBuf(&response, 0, client, FILENAME_RES, 0, buf);
         returnValue = RECV_DATA;
@@ -141,6 +162,49 @@ STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, u
         returnValue = DONE;
     }
 
+    return returnValue;
+}
+
+STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount, int *expected_seq_num) {
+    int timeoutFlag = RECV_DATA;
+    int returnValue = RECV_DATA;
+    uint8_t flag = 0;
+    uint32_t seq_num = 0;
+    uint8_t packet[MAX_LEN];
+    uint32_t data_len = 0;
+
+    if (*data_received = 0) {
+        returnValue = processSelect(client, retryCount, ACK_CLIENT, RECV_DATA, DONE);
+        if (returnValue != RECV_DATA) {
+            return returnValue;
+        }
+    } else if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
+        printf("No data from client in %d seconds, shutting down\n", LONG_TIME);
+        return DONE;
+    }
+    
+
+    *data_received = 1;
+
+    data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
+
+    printf("Got something!\n");
+
+    /*
+    if (data_len == CRC_ERROR) {
+        return RECV_DATA;
+    }
+
+    if (flag == EOF) {
+        send_buf(packet, 0, client, EOF, 0, packet);
+        printf("File done\n");
+        return WAIT_CLIENT_END;
+    } else {
+        send_buf(packet, )
+    }
+    */
+
+    
     return returnValue;
 }
 

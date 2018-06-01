@@ -48,7 +48,7 @@
 #define FILENAME_OFFSET 9
 
 enum FLAG {
-   ZERO, SETUP_REQ, SETUP_RES, DATA, UNUSED, RR, SREJ, FILENAME_REQ, FILENAME_RES, FILENAME_ERR, END
+   ZERO, SETUP_REQ, SETUP_RES, DATA, UNUSED, RR, SREJ, FILENAME_REQ, FILENAME_RES, FILENAME_ERR, END_OF_FILE, END
 };
 
 enum SELECT {
@@ -67,13 +67,18 @@ typedef struct header {
    uint8_t flag;
 } __attribute__((packed)) Header;
 
+typedef struct windowBuf {
+    uint32_t buf_size;
+    uint8_t *buffer;
+} windowBuf;
+
 typedef struct window {
    uint32_t bottom;
    uint32_t middle;
    uint32_t top;
    uint32_t size;
 
-   uint8_t buf;
+   windowBuf *buf;
 } Window;
 
 int safeSend(uint8_t *packet, uint32_t len, Connection *connection);
@@ -82,6 +87,9 @@ int sendBuf(uint8_t *buf, uint32_t len, Connection *connection, uint8_t flag, ui
 int recv_buf(uint8_t *buf, int len, int sk_num, Connection *connection, uint8_t *flag, int *seq_num);
 int createHeader(uint32_t len, uint8_t flag, uint32_t seq_num, uint8_t *packet);
 int retrieveHeader(char *data_buf, int recv_len, uint8_t *flag, uint32_t *seq_num);
+void initWindow(Window *window, int buf_size, int window_size);
+void *checked_calloc(size_t size);
+
 int processSelect(Connection *client, int *retryCount, int selectTimeoutState, int dataReadyState, int doneState);
 
 int select_call(int sk_num, int sec, int microsec, int set_null);

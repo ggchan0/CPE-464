@@ -111,6 +111,28 @@ int retrieveHeader(char *data_buf, int recv_len, uint8_t *flag, uint32_t *seq_nu
 	return returnValue;
 }
 
+void initWindow(Window *window, int buf_size, int window_size) {
+	int i;
+	window->bottom = 1;
+	window->top = window_size;
+	window->middle = 1;
+	window->size = window_size;
+	window->buf = checked_calloc(sizeof(windowBuf) * window_size + HEADER_SIZE);
+	for (i = 0; i < window_size; i++) {
+		(window->buf)[i].buffer = checked_calloc(sizeof(uint8_t) * buf_size);
+	}
+}
+
+void *checked_calloc(size_t size) {
+	void *mem = NULL;
+	if ((mem = calloc(size, sizeof(uint8_t))) == NULL) {
+		perror("Calloc error:");
+		exit(-1);
+	}
+
+	return mem;
+}
+
 /*
 	Returns:
 	doneState if calling this exceeds MAX_TRIES
@@ -172,35 +194,6 @@ int udpServerSetup(int portNumber)
 	return socketNum;
 
 }
-
-/*
-int udpClientSetup(char *hostname, int portNumber, Connection *connection) {
-	struct hostent *hp = NULL;
-
-	connection->sk_num = 0;
-	connection->len = sizeof(struct sockaddr_in);
-
-	if ((connection->sk_num = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-		perror("udpClientSetup, socket");
-		exit(-1);
-	}
-
-	connection->remote.sin_family = AF_INET;
-
-	hp = gethostbyname(hostname);
-
-	if (hp == NULL) {
-		printf("Host not found: %s\n", hostname);
-		return -1;
-	}
-
-	memcpy(&(connection->remote.sin_addr), hp->h_addr, hp->h_length);
-
-	connection->remote.sin_port = htons((uint16_t)portNumber);
-
-	return 0;
-}
-*/
 
 int udpClientSetup(char * hostName, int portNumber, Connection *connection) {
 	// currently only setup for IPv4
