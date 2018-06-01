@@ -39,16 +39,16 @@
 #define FLAG_SIZE 1
 
 /* File Name Exchange */
-#define WINDOW_LEN_OFFSET 7
+#define WINDOW_LEN_OFFSET 0
 #define WINDOW_LEN_SIZE 4
-#define BUFFER_LEN_OFFSET 11
+#define BUFFER_LEN_OFFSET 4
 #define BUFFER_LEN_SIZE 4
-#define FILENAME_LEN_OFFSET 15
+#define FILENAME_LEN_OFFSET 8
 #define FILENAME_LEN_SIZE 1
-#define FILENAME_OFFSET 16
+#define FILENAME_OFFSET 9
 
 enum FLAG {
-   ZERO, SETUP_REQ, SETUP_RES, DATA, UNUSED, RR, SREJ, FILENAME_REQ, FILENAME_RES, END
+   ZERO, SETUP_REQ, SETUP_RES, DATA, UNUSED, RR, SREJ, FILENAME_REQ, FILENAME_RES, FILENAME_ERR, END
 };
 
 enum SELECT {
@@ -66,6 +66,15 @@ typedef struct header {
    uint16_t checksum;
    uint8_t flag;
 } __attribute__((packed)) Header;
+
+typedef struct window {
+   uint32_t bottom;
+   uint32_t middle;
+   uint32_t top;
+   uint32_t size;
+
+   uint8_t buf;
+} Window;
 
 int safeSend(uint8_t *packet, uint32_t len, Connection *connection);
 int safeRecv(int sk_num, char *data_buf, int len, Connection *connection);

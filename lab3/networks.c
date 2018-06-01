@@ -71,12 +71,10 @@ int recv_buf(uint8_t *buf, int len, int sk_num, Connection *connection, uint8_t 
 	dataLen = retrieveHeader(data_buf, recv_len, flag, seq_num);
 
 	if (dataLen > 0) {
-		memcpy(buf, data_buf, recv_len);
-	} else {
-		return dataLen;
+		memcpy(buf, data_buf + HEADER_SIZE, recv_len);
 	}
 
-	return recv_len;
+	return dataLen;
 }
 
 int createHeader(uint32_t len, uint8_t flag, uint32_t seq_num, uint8_t *packet) {

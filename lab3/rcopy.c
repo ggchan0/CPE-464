@@ -109,6 +109,11 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
         recv_check = recv_buf(packet, MAX_LEN, server->sk_num, server, &flag, &seq_num);
         if (recv_check == CRC_ERROR) {
             returnValue = FILENAME;
+        } else if (flag == FILENAME_ERR) {
+            printf("Error during file open of %s on server\n", filename);
+            returnValue = DONE;
+        } else if (flag == FILENAME_RES) {
+            returnValue = SEND_DATA;
         }
     }
 

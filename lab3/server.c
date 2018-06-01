@@ -88,6 +88,7 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
     uint32_t buf_size = 0;
     uint32_t window_size = 0;
     uint32_t seq_num = START_SEQ_NUM;
+    Window window;
 
     client->remote.sin6_family = AF_INET6;
 
@@ -100,6 +101,7 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
                 state = filename(client, buf, recv_len, &data_file, &buf_size, &window_size);
                 break;
             case RECV_DATA:
+                //state = recv_data(client, buf, &data_file, &window);
                 break;
             default:
                 state = DONE;
@@ -129,12 +131,15 @@ STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, u
         exit(-1);
     }
 
-    if (((*data_file) = open(fname, O_WRONLY)) > 0) {
+    *data_file = open(fname, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+
+    if (*data_file > 0) {
         sendBuf(&response, 0, client, FILENAME_RES, 0, buf);
         returnValue = RECV_DATA;
+    } else if (*data_file < 0) {
+        sendBuf(&response, 0, client, FILENAME_ERR, 0, buf);
+        returnValue = DONE;
     }
-
-    printf("fname %s window size %d buffer size %d\n", fname, *window_size, *buf_size);
 
     return returnValue;
 }
