@@ -58,7 +58,7 @@ enum SELECT {
 
 typedef struct connection {
     int sk_num;
-    struct sockaddr_in remote;
+    struct sockaddr_in6 remote;
     uint32_t len;
 } __attribute__((packed)) Connection;
 

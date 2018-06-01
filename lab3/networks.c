@@ -24,7 +24,7 @@
 int safeSend(uint8_t *packet, uint32_t len, Connection *connection) {
 	int send_len = 0;
 
-	if ((send_len = sendtoErr(connection->sk_num, packet, len, 0, (struct sockaddr *) &(connection->remote), connection->len)) < 0) {
+	if ((send_len = sendtoErr(connection->sk_num, packet, len, 0, (struct sockaddr *) &(connection->remote), sizeof(struct sockaddr_in6))) < 0) {
 		perror("in send_buf(), sendto() call");
 		exit(-1);
 	}
@@ -51,7 +51,7 @@ int sendBuf(uint8_t *buf, uint32_t len, Connection *connection, uint8_t flag, ui
 	uint32_t sendingLen = 0;
 
 	if (len > 0) {
-		memcpy(&packet[HEADER_SIZE], buf, len);
+		memcpy(packet + HEADER_SIZE, buf, len);
 	}
 
 	sendingLen = createHeader(len, flag, seq_num, packet);
@@ -71,10 +71,10 @@ int recv_buf(uint8_t *buf, int len, int sk_num, Connection *connection, uint8_t 
 	dataLen = retrieveHeader(data_buf, recv_len, flag, seq_num);
 
 	if (dataLen > 0) {
-		memcpy(buf, &data_buf[HEADER_SIZE], dataLen);
+		memcpy(buf, data_buf, recv_len);
 	}
 
-	return dataLen;
+	return recv_len;
 }
 
 int createHeader(uint32_t len, uint8_t flag, uint32_t seq_num, uint8_t *packet) {
@@ -121,7 +121,7 @@ int processSelect(Connection *client, int *retryCount, int selectTimeoutState, i
 
 	(*retryCount)++;
 	if (*retryCount > MAX_TRIES) {
-		printf("Sent data %d times, no ACK, client is probably gone", MAX_TRIES);
+		printf("Sent data %d times, no ACK, client is probably gone\n", MAX_TRIES);
 		returnValue = doneState;
 	} else {
 		if (select_call(client->sk_num, SHORT_TIME, 0, NOT_NULL) == 1) {
@@ -145,7 +145,7 @@ int udpServerSetup(int portNumber)
 	int serverAddrLen = 0;
 
 	// create the socket
-	if ((socketNum = socket(AF_INET6,SOCK_DGRAM,0)) < 0)
+	if ((socketNum = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
 	{
 		perror("socket() call error");
 		exit(-1);
@@ -172,6 +172,7 @@ int udpServerSetup(int portNumber)
 
 }
 
+/*
 int udpClientSetup(char *hostname, int portNumber, Connection *connection) {
 	struct hostent *hp = NULL;
 
@@ -194,9 +195,38 @@ int udpClientSetup(char *hostname, int portNumber, Connection *connection) {
 
 	memcpy(&(connection->remote.sin_addr), hp->h_addr, hp->h_length);
 
-	connection->remote.sin_port = htons(portNumber);
+	connection->remote.sin_port = htons((uint16_t)portNumber);
 
 	return 0;
+}
+*/
+
+int udpClientSetup(char * hostName, int portNumber, Connection *connection) {
+	// currently only setup for IPv4
+	char ipString[INET6_ADDRSTRLEN];
+	uint8_t * ipAddress = NULL;
+	connection->sk_num = 0;
+	connection->len = sizeof(struct sockaddr_in);
+
+	// create the socket
+	if ((connection->sk_num = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
+	{
+		perror("udpClientSetup, socket");
+		exit(-1);
+	}
+
+	if ((ipAddress = gethostbyname6(hostName, &(connection->remote))) == NULL)
+	{
+		exit(-1);
+	}
+
+	connection->remote.sin6_port = ntohs(portNumber);
+	connection->remote.sin6_family = AF_INET6;
+
+	inet_ntop(AF_INET6, ipAddress, ipString, sizeof(ipString));
+	printf("Server info - IP: %s Port: %d \n", ipString, portNumber);
+
+	return connection->sk_num;
 }
 
 int select_call(int sk_num, int sec, int microsec, int set_null) {

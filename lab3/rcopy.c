@@ -28,7 +28,7 @@ enum State {
 };
 
 int startConnection(char **argv, Connection *server);
-int requestFilename(char *filename, int bufSize, Connection *server);
+int sendFilename(char *filename, int bufSize, int windowSize, Connection *server);
 void process_args(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
                 state = startConnection(argv, &server);
                 break;
             case FILENAME:
-                state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]));
+                state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]), &server);
                 break;
             case SEND_DATA:
                 break;
@@ -91,9 +91,10 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
     uint8_t packet[MAX_LEN];
     uint8_t buf[MAX_LEN];
     int payloadLen = WINDOW_LEN_SIZE + BUFFER_LEN_SIZE + FILENAME_LEN_SIZE + strlen(filename);
-    int retryCount = 0;
+    static int retryCount = 0;
     int offset = 0;
 
+    printf("payload len %d\n", payloadLen);
     memcpy(buf + offset, &nlWindowSize, WINDOW_LEN_SIZE);
     offset += WINDOW_LEN_SIZE;
     memcpy(buf + offset, &nlBufSize, BUFFER_LEN_SIZE);
@@ -106,7 +107,7 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
 
     if ((returnValue = processSelect(server, &retryCount, FILENAME, SEND_DATA, DONE)) == SEND_DATA) {
         recv_check = recv_buf(packet, MAX_LEN, server->sk_num, server, &flag, &seq_num);
-
+        printf("here3\n");
         if (recv_check == CRC_ERROR) {
             returnValue = FILENAME;
         }
@@ -133,6 +134,9 @@ void process_args(int argc, char **argv) {
         exit(-1);
     } else if (atoi(argv[3]) < 400 || atoi(argv[3]) > 1400) {
         printf("Buffer size needs to be between 400 and 1400 and is %s\n", argv[3]);
+        exit(-1);
+    } else if (atoi(argv[4]) <= 0) {
+        printf("Window size needs to be a positive integer and is %s\n", argv[4]);
         exit(-1);
     } else if (atof(argv[5]) < 0 || atof(argv[5]) >= 1) {
         printf("Error rate needs to be between 0 and 1 and is %s\n", argv[4]);

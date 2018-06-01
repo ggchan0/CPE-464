@@ -59,6 +59,7 @@ void processServer(int sk_num) {
     while(1) {
         if (select_call(sk_num, LONG_TIME, 0, SET_NULL) == 1) {
             recv_len = recv_buf(buf, MAX_LEN, sk_num, &client, &flag, &seq_num);
+            printf("recv %d\n", recv_len);
             if (recv_len != CRC_ERROR) {
                 if ((pid = fork()) < 0) {
                     perror("fork");
@@ -87,6 +88,8 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
     uint32_t window_size = 0;
     uint32_t seq_num = START_SEQ_NUM;
 
+    client->remote.sin6_family = AF_INET6;
+
     while (state != DONE) {
         switch(state) {
             case START:
@@ -94,6 +97,8 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
                 break;
             case FILENAME:
                 state = filename(client, buf, recv_len, &data_file, &buf_size, &window_size);
+                break;
+            case RECV_DATA:
                 break;
             default:
                 state = DONE;
@@ -118,7 +123,7 @@ STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, u
 
     fname[filenameLen] = '\0';
 
-    if ((client->sk_num = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    if ((client->sk_num = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
         perror("filename, open client socket");
         exit(-1);
     }
