@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
     int portNumber = 0;
 
     portNumber = processArgs(argc, argv);
-    sendtoErr_init(atof(argv[1]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
+    sendtoErr_init(atof(argv[1]), DROP_ON, FLIP_ON, DEBUG_OFF, RSEED_ON);
 
     sk_num = udpServerSetup(portNumber);
 
@@ -61,6 +61,7 @@ void processServer(int sk_num) {
             recv_len = recv_buf(buf, MAX_LEN, sk_num, &client, &flag, &seq_num);
             printf("recv %d\n", recv_len);
             if (recv_len != CRC_ERROR) {
+                printf("forked!\n");
                 if ((pid = fork()) < 0) {
                     perror("fork");
                     exit(-1);

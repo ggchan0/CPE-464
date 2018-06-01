@@ -72,6 +72,8 @@ int recv_buf(uint8_t *buf, int len, int sk_num, Connection *connection, uint8_t 
 
 	if (dataLen > 0) {
 		memcpy(buf, data_buf, recv_len);
+	} else {
+		return dataLen;
 	}
 
 	return recv_len;
@@ -98,6 +100,7 @@ int retrieveHeader(char *data_buf, int recv_len, uint8_t *flag, uint32_t *seq_nu
 	int returnValue = 0;
 
 	if (in_cksum((unsigned short*) data_buf, recv_len) != 0) {
+		printf("CRC Error\n");
 		returnValue = CRC_ERROR;
 	} else {
 		*flag = aHeader->flag;
