@@ -23,7 +23,7 @@
 
 int safeSend(uint8_t *packet, uint32_t len, Connection *connection) {
 	int send_len = 0;
-	
+
 	if ((send_len = sendtoErr(connection->sk_num, packet, len, 0, (struct sockaddr *) &(connection->remote), connection->len)) < 0) {
 		perror("in send_buf(), sendto() call");
 		exit(-1);
@@ -47,7 +47,7 @@ int safeRecv(int sk_num, char *data_buf, int len, Connection *connection) {
 }
 
 int sendBuf(uint8_t *buf, uint32_t len, Connection *connection, uint8_t flag, uint32_t seq_num, uint8_t * packet) {
-	uint32_t sentLen = 0;sizeof(Header);
+	uint32_t sentLen = 0;
 	uint32_t sendingLen = 0;
 
 	if (len > 0) {

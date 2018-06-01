@@ -24,7 +24,7 @@
 typedef enum State STATE;
 
 enum State {
-    DONE, FILENAME, RECV_DATA, FILE_OK, START_STATE
+    DONE, FILENAME, SEND_DATA, START_STATE, WAIT_ON_ACK, TIMEOUT_ON_ACK, WAIT_ON_EOF_ACK, TIMEOUT_ON_EOF_ACK
 };
 
 int startConnection(char **argv, Connection *server);
@@ -46,10 +46,9 @@ int main(int argc, char **argv) {
                 state = startConnection(argv, &server);
                 break;
             case FILENAME:
+                state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]));
                 break;
-            case FILE_OK:
-                break;
-            case RECV_DATA:
+            case SEND_DATA:
                 break;
             case DONE:
                 break;
@@ -58,7 +57,6 @@ int main(int argc, char **argv) {
                 printf("ERROR - in default state\n");
                 break;
         }
-        exit(0);
     }
 
     return 0;
@@ -82,10 +80,37 @@ int startConnection(char **argv, Connection *server) {
     return returnValue;
 }
 
-int requestFilename(char *filename, int bufSize, Connection *server) {
+int sendFilename(char *filename, int bufSize, int windowSize, Connection *server) {
     int returnValue = START_STATE;
-
+    uint32_t nlWindowSize = htonl(windowSize);
+    uint32_t nlBufSize = htonl(bufSize);
+    uint32_t recv_check = 0;
+    uint8_t flag = 0;
+    uint32_t seq_num = 0;
+    uint8_t filenameLen = strlen(filename);
     uint8_t packet[MAX_LEN];
+    uint8_t buf[MAX_LEN];
+    int payloadLen = WINDOW_LEN_SIZE + BUFFER_LEN_SIZE + FILENAME_LEN_SIZE + strlen(filename);
+    int retryCount = 0;
+    int offset = 0;
+
+    memcpy(buf + offset, &nlWindowSize, WINDOW_LEN_SIZE);
+    offset += WINDOW_LEN_SIZE;
+    memcpy(buf + offset, &nlBufSize, BUFFER_LEN_SIZE);
+    offset += BUFFER_LEN_SIZE;
+    memcpy(buf + offset, &filenameLen, FILENAME_LEN_SIZE);
+    offset += FILENAME_LEN_SIZE;
+    memcpy(buf + offset, filename, filenameLen);
+
+    sendBuf(buf, payloadLen, server, FILENAME_REQ, 0, packet);
+
+    if ((returnValue = processSelect(server, &retryCount, FILENAME, SEND_DATA, DONE)) == SEND_DATA) {
+        recv_check = recv_buf(packet, MAX_LEN, server->sk_num, server, &flag, &seq_num);
+
+        if (recv_check == CRC_ERROR) {
+            returnValue = FILENAME;
+        }
+    }
 
     return returnValue;
 }
@@ -97,10 +122,16 @@ void process_args(int argc, char **argv) {
     } else if (strlen(argv[1]) > 100) {
         printf("fromFile name needs to be less than 100 characters and is %d\n", (int) strlen(argv[1]));
         exit(-1);
+    } else if (access(argv[1], F_OK) == -1) {
+        printf("Error opening file: %s does not exist\n", argv[1]);
+        exit(-1);
+    } else if (access(argv[1], F_OK) == -1) {
+        printf("Error opening file: %s bad permissions\n", argv[1]);
+        exit(-1);
     } else if (strlen(argv[2]) > 100) {
         printf("toFile name needs to be less than 100 characters and is %d\n", (int) strlen(argv[2]));
         exit(-1);
-    } else if (atoi(argv[4]) < 400 || atoi(argv[4]) > 1400) {
+    } else if (atoi(argv[3]) < 400 || atoi(argv[3]) > 1400) {
         printf("Buffer size needs to be between 400 and 1400 and is %s\n", argv[3]);
         exit(-1);
     } else if (atof(argv[5]) < 0 || atof(argv[5]) >= 1) {

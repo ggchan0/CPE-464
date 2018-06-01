@@ -24,12 +24,13 @@
 typedef enum State STATE;
 
 enum State {
-    START, DONE, FILENAME, SEND_DATA, WAIT_ON_ACK, TIMEOUT_ON_ACK, WAIT_ON_EOF_ACK, TIMEOUT_ON_EOF_ACK
+    START, DONE, FILENAME, RECV_DATA
 };
 
 
 void processServer(int sk_num);
 void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client);
+STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size);
 int processArgs(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -82,7 +83,8 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
     int data_file = 0;
     int packet_len = 0;
     uint8_t packet[MAX_LEN];
-    int buf_size = 0;
+    uint32_t buf_size = 0;
+    uint32_t window_size = 0;
     uint32_t seq_num = START_SEQ_NUM;
 
     while (state != DONE) {
@@ -91,7 +93,7 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
                 state = FILENAME;
                 break;
             case FILENAME:
-                state = filename(client, buf, recv_len, data_file, buf_size);
+                state = filename(client, buf, recv_len, &data_file, &buf_size, &window_size);
                 break;
             default:
                 state = DONE;
@@ -101,22 +103,34 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
 
 }
 
-STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, int *buf_size) {
-    uint8_t response;
+STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size) {
+    uint8_t response = 0;
     char fname[MAX_LEN];
     STATE returnValue = DONE;
+    uint8_t filenameLen;
 
-    memcpy(buf_size, buf, SIZE_OF_BUF_SIZE);
+    memcpy(window_size, buf + WINDOW_LEN_OFFSET, WINDOW_LEN_SIZE);
+    *window_size = ntohl(*window_size);
+    memcpy(buf_size, buf + BUFFER_LEN_OFFSET, BUFFER_LEN_SIZE);
     *buf_size = ntohl(*buf_size);
-    memcpy(fname, &buf[sizeof(*buf_size)], recv_len - SIZE_OF_BUF_SIZE);
+    memcpy(&filenameLen, buf + FILENAME_LEN_OFFSET, FILENAME_LEN_SIZE);
+    memcpy(fname, buf + FILENAME_OFFSET, filenameLen);
+
+    fname[filenameLen] = '\0';
+
     if ((client->sk_num = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("filename, open client socket");
         exit(-1);
     }
 
-    if (((*data_file) = open(fname, O_RDONLY)) < 0) {
-        send_buf(&response, 0, client, FNAME_BAD, 0, buf);
+    if (((*data_file) = open(fname, O_WRONLY)) > 0) {
+        sendBuf(&response, 0, client, FILENAME_RES, 0, buf);
+        returnValue = RECV_DATA;
     }
+
+    printf("fname %s window size %d buffer size %d\n", fname, *window_size, *buf_size);
+
+    return returnValue;
 }
 
 int processArgs(int argc, char **argv) {
