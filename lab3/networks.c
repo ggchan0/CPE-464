@@ -111,15 +111,66 @@ int retrieveHeader(char *data_buf, int recv_len, uint8_t *flag, uint32_t *seq_nu
 	return returnValue;
 }
 
+void insertIntoWindow(Window *window, uint8_t *packet, int packetLen, int seq_num) {
+	int index = 0;
+
+	index = seq_num % window->size;
+
+	memcpy(window->buf[index].buffer, packet, packetLen);
+	window->buf[index].buf_size = packetLen;
+	window->buf[index].seq_num = seq_num;
+	window->isValid[index] = 1;
+}
+
+void loadFromWindow(Window *window, uint8_t *packet, uint32_t *len_read, int seq_num) {
+	int index = seq_num % window->size;
+
+	memcpy(packet, window->buf[index].buffer, window->buf[index].buf_size);
+	*len_read = window->buf[index].buf_size;
+}
+
+void removeFromWindow(Window *window, uint8_t *packet, int seq_num) {
+	int index = seq_num % window->size;
+	loadFromWindow(window, packet, seq_num);
+	window->isValid[index] = 0;
+}
+
+void slideWindow(Window *window, int new_bottom) {
+	int i, index;
+
+	for (i = window->bottom; i < new_bottom; i++) {
+		index = i % window->size;
+		window->isValid[index] = 0;
+	}
+
+	window->bottom = new_bottom;
+	if (window->bottom > window->middle) {
+		window->middle = window->bottom;
+	}
+}
+
+void freeWindow(Window *window) {
+	int i;
+	for (i = 0; i < window->size; i++) {
+		windowBuf *b = window->buf[i];
+		free(b->buffer);
+		free(b);
+	}
+	free(window->buf);
+	free(window->isValid);
+}
+
 void initWindow(Window *window, int buf_size, int window_size) {
 	int i;
 	window->bottom = 1;
 	window->top = window_size;
 	window->middle = 1;
 	window->size = window_size;
-	window->buf = checked_calloc(sizeof(windowBuf) * window_size + HEADER_SIZE);
+	window->isValid = checked_calloc(sizeof(uint8_t) * window_size);
+	window->buf = checked_calloc(sizeof(windowBuf *) * window_size);
 	for (i = 0; i < window_size; i++) {
-		(window->buf)[i].buffer = checked_calloc(sizeof(uint8_t) * buf_size);
+		(window->buf)[i] = checked_calloc(sizeof(windowBuf));
+		(window->buf)[i].buffer = checked_calloc(sizeof(uint8_t) * buf_size  + HEADER_SIZE);
 	}
 }
 

@@ -24,7 +24,7 @@
 typedef enum State STATE;
 
 enum State {
-    DONE, FILENAME, SEND_DATA, START_STATE, WAIT_ON_ACK, TIMEOUT_ON_ACK, WAIT_ON_EOF_ACK, TIMEOUT_ON_EOF_ACK
+    DONE, FILENAME, SEND_DATA, START_STATE, PROCESS_SERVER_RESPONSE, WAIT_ON_ACK, TIMEOUT_ON_ACK, WAIT_ON_EOF_ACK, TIMEOUT_ON_EOF_ACK
 };
 
 int startConnection(char **argv, Connection *server);
@@ -54,7 +54,15 @@ int main(int argc, char **argv) {
                 state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]), &server);
                 break;
             case SEND_DATA:
-                state = sendData(&server, data_file, &expected_seq_num, &window);
+                state = sendData(&server, data_file, &expected_seq_num, &window, atoi(argv[2]));
+                exit(0);
+                break;
+            case PROCESS_SERVER_RESPONSE
+                //state = process(&server, data_file, &expected_seq_num, &window, atoi(argv[2]));
+                exit(0);
+                break;
+            case WAIT_ON_ACK:
+                //state = sendData(&server, data_file, &expected_seq_num, &window, atoi(argv[2]));
                 exit(0);
                 break;
             case DONE:
@@ -127,13 +135,94 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
 
     return returnValue;
 }
+void insertIntoWindow(Window *window, uint8_t *packet, int packetLen, int seq_num)
 
-STATE sendData(Connection *server, int data_file, int *expected_seq_num, Window *window) {
-    uint8_t response = 0;
+STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size) {
+    uint8_t buf[MAX_LEN];
     uint8_t packet[MAX_LEN];
-    sendBuf(&response, 0, server, DATA, 0, packet);
+    uint32_t len_read = 0;
+    uint32_t packet_len = 0;
+    int returnValue = DONE;
 
-    return DONE;
+    if (window->middle == window->top) {
+        return WAIT_ON_ACK;
+    }
+
+    len_read = read(data_file, buf, buf_size);
+
+    switch(len_read) {
+        case -1:
+            perror("rcopy sendData, read error");
+            returnValue = DONE;
+            break;
+        case 0:
+            packet_len = send_buf(buf, 0, server, END_OF_FILE, *seq_num, packet);
+            returnValue = DONE;
+            break;
+        default:
+            insertIntoWindow(window, buf, len_read, *seq_num);
+            send_buf(buf, len_read, DATA, *seq_num, packet);
+            *(seq_num)++;
+            returnValue = PROCESS_SERVER_RESPONSE;
+            break;
+    }
+
+    if (select_call(client->sk_num, 0, 0, NOT_NULL) == 0) {
+        returnValue = PROCESS_SERVER_RESPONSE;
+    }
+
+    return returnValue;
+}
+
+STATE process(Connection *server, Window *window) {
+    int len_read = 0;
+    int buf_size = 0;
+    uint8_t buf[MAX_LEN];
+    uint8_t packet[MAX_LEN]; 
+    uint8_t flag;
+    uint32_t seq_num;
+    
+    if (select_call(client->sk_num, 0, 0, NOT_NULL) == 0) {
+        return SEND_DATA;
+    }
+
+    len_read = recv_buf(buf, MAX_LEN, connection->sk_num, connection, &flag, &seq_num);
+    seq_num = ntohl(seq_num);
+
+    if (flag == RR) {
+        if (seq_num > window->bottom) {
+            slideWindow(window, seq_num);
+        }
+    } else if (flag == SREJ) {
+        loadFromWindow(window, buf, &buf_size, &seq_num);
+        send_buf(buf, buf_size, DATA, seq_num, packet);
+    }
+
+    return SEND_DATA;
+}
+
+STATE wait_on_acks(Connection *server, Window *window, int *retryCount) {
+    int len_read = 0;
+    int buf_size = 0;
+    uint8_t buf[MAX_LEN];
+    uint8_t packet[MAX_LEN];
+    uint8_t flag;
+    uint32_t seq_num;
+
+    if (*retryCount > MAX_TRIES) {
+        printf("Sent packet %d times, quitting\n", MAX_TRIES);
+        return DONE;
+    }
+
+    if (select_call(server->sk_num, SHORT_TIME, 0, NOT_NULL) == 1) {
+        loadFromWindow(window, buf, &buf_size, &seq_num);
+        send_buf(buf, buf_size, DATA, seq_num, packet);
+
+        return WAIT_ON_ACK;
+    }
+
+    *retryCount = 0;
+    return PROCESS_SERVER_RESPONSE;
 }
 
 void process_args(int argc, char **argv) {
