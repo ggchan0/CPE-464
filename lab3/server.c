@@ -32,7 +32,7 @@ void processServer(int sk_num);
 void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client);
 STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size, Window *window);
 STATE ackClient(Connection *client, uint8_t *buf, int *data_file);
-STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount, int *expected_seq_num);
+STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount);
 int processArgs(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -107,7 +107,7 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
             case ACK_CLIENT:
                 state = ackClient(client, buf, &data_file);
             case RECV_DATA:
-                state = recv_data(client, buf, &data_file, &data_received, &window, &retryCount, &seq_num);
+                state = recv_data(client, buf, &data_file, &data_received, &window, &retryCount;
                 break;
             default:
                 state = DONE;
@@ -165,7 +165,7 @@ STATE ackClient(Connection *client, uint8_t *buf, int *data_file) {
     return returnValue;
 }
 
-STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount, int *expected_seq_num) {
+STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window) {
     int timeoutFlag = RECV_DATA;
     int returnValue = RECV_DATA;
     uint8_t flag = 0;
@@ -188,24 +188,28 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
 
     data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
-    
-
-    printf("Got something!\n");
-
-    /*
     if (data_len == CRC_ERROR) {
         return RECV_DATA;
     }
 
     if (flag == EOF) {
-        send_buf(packet, 0, client, EOF, 0, packet);
+        send_buf(packet, 0, client, END_OF_FILE, 0, packet);
         printf("File done\n");
         return WAIT_CLIENT_END;
-    } else {
-        send_buf(packet, )
+    } else if (flag == DATA) {
+        if (seq_num == window->bottom) {
+            slideWindow(window, window->bottom + 1);
+            write(data_file, packet, data_len);
+            /*TODO send RR*/
+        } else if (seq_num < window->bottom) {
+            /*TODO send RR*/
+        } else if (seq_num > window->top) {
+            /*TODO send RR*/
+        } else {
+            
+            /*TODO send SREJ*/
+        }
     }
-    */
-
     
     return returnValue;
 }

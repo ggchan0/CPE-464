@@ -192,6 +192,7 @@ STATE process(Connection *server, Window *window) {
         if (seq_num > window->bottom) {
             slideWindow(window, seq_num);
         }
+        
     } else if (flag == SREJ) {
         loadFromWindow(window, buf, &buf_size, seq_num);
 
