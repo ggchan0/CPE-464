@@ -24,7 +24,7 @@
 typedef enum State STATE;
 
 enum State {
-    START, DONE, FILENAME, ACK_CLIENT, RECV_DATA
+    START, DONE, FILENAME, ACK_CLIENT, RECV_DATA, WAIT_CLIENT_END, RECOVER_MISSING_PACKETS
 };
 
 
@@ -33,6 +33,10 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client);
 STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size, Window *window);
 STATE ackClient(Connection *client, uint8_t *buf, int *data_file);
 STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount);
+STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, Window *window);
+STATE wait_client_end(Connection *client, uint8_t *buf);
+void send_RR(Connection *client, uint32_t seq_num);
+void send_SREJ(Connection *client, uint32_t seq_num);
 int processArgs(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -106,8 +110,15 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
                 break;
             case ACK_CLIENT:
                 state = ackClient(client, buf, &data_file);
+                break;
             case RECV_DATA:
-                state = recv_data(client, buf, &data_file, &data_received, &window, &retryCount;
+                state = recv_data(client, buf, &data_file, &data_received, &window, &retryCount);
+                break;
+            case RECOVER_MISSING_PACKETS:
+                state = recover_missing_packets(client, buf, &data_file, &window);
+                break;
+            case WAIT_CLIENT_END:
+                state = wait_client_end(client, buf);
                 break;
             default:
                 state = DONE;
@@ -152,8 +163,6 @@ STATE ackClient(Connection *client, uint8_t *buf, int *data_file) {
     uint8_t response = 0;
     int returnValue = 0;
 
-    printf("sending ack to client\n");
-
     if (*data_file > 0) {
         sendBuf(&response, 0, client, FILENAME_RES, 0, buf);
         returnValue = RECV_DATA;
@@ -165,7 +174,7 @@ STATE ackClient(Connection *client, uint8_t *buf, int *data_file) {
     return returnValue;
 }
 
-STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window) {
+STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_received, Window *window, int *retryCount) {
     int timeoutFlag = RECV_DATA;
     int returnValue = RECV_DATA;
     uint8_t flag = 0;
@@ -176,42 +185,137 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
     if (*data_received = 0) {
         returnValue = processSelect(client, retryCount, ACK_CLIENT, RECV_DATA, DONE);
         if (returnValue != RECV_DATA) {
+            printf("Here %d\n", returnValue);
             return returnValue;
         }
     } else if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
         printf("No data from client in %d seconds, shutting down\n", LONG_TIME);
         return DONE;
     }
-    
 
     *data_received = 1;
 
     data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
+    printf("received data of len %d\n", data_len);
+
     if (data_len == CRC_ERROR) {
         return RECV_DATA;
     }
 
-    if (flag == EOF) {
-        send_buf(packet, 0, client, END_OF_FILE, 0, packet);
-        printf("File done\n");
+    if (flag == END) {
         return WAIT_CLIENT_END;
-    } else if (flag == DATA) {
+    }
+
+    if (flag == DATA) {
         if (seq_num == window->bottom) {
+            insertIntoWindow(window, packet, data_len, seq_num);
             slideWindow(window, window->bottom + 1);
-            write(data_file, packet, data_len);
-            /*TODO send RR*/
+            write(*data_file, packet, data_len);
+            send_RR(client, window->bottom);
         } else if (seq_num < window->bottom) {
-            /*TODO send RR*/
+            send_RR(client, window->bottom);
         } else if (seq_num > window->top) {
-            /*TODO send RR*/
+            returnValue = DONE;
         } else {
-            
-            /*TODO send SREJ*/
+            insertIntoWindow(window, packet, data_len, seq_num);
+            window->middle = window->bottom;
+
+            send_SREJ(client, window->bottom);
+            returnValue = RECOVER_MISSING_PACKETS;
         }
     }
-    
+
     return returnValue;
+}
+
+STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, Window *window) {
+    uint32_t data_len = 0;
+    int i;
+    uint8_t flag = 0;
+    uint32_t seq_num = 0;
+
+    if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
+        printf("Client unresponsive, quitting\n");
+        return DONE;
+    }
+
+    data_len = recv_buf(buf, MAX_LEN, client->sk_num, client, &flag, &seq_num);
+
+    if (data_len == CRC_ERROR) {
+        return RECOVER_MISSING_PACKETS;
+    } else if (flag == END_OF_FILE) {
+        if (window->bottom == seq_num) {
+            return DONE;
+        } else {
+            return RECOVER_MISSING_PACKETS;
+        }
+    } else if (seq_num >= window->bottom && seq_num <= window->top) {
+        insertIntoWindow(window, buf, data_len, seq_num);
+        for (i = window->bottom; i <= window->top; i++) {
+            int index = i % window->size;
+            if (window->isValid[index] == 0) {
+                window->middle = i;
+            }
+        }
+
+        send_SREJ(client, window->middle);
+
+        for (i = window->bottom; i < window->middle; i++) {
+            loadFromWindow(window, buf, &data_len, i);
+            removeFromWindow(window, i);
+            write(*data_file, buf, data_len);
+        }
+
+        send_RR(client, window->middle);
+        slideWindow(window, window->middle);
+
+        return RECV_DATA;
+    }
+
+    send_RR(client, window->middle);
+    return RECOVER_MISSING_PACKETS;
+}
+
+STATE wait_client_end(Connection *client, uint8_t *buf) {
+    int returnValue = DONE;
+    uint8_t flag = 0;
+    uint32_t seq_num = 0;
+    uint32_t data_len = 0;
+    if (select_call(client->sk_num, SHORT_TIME, 0, NOT_NULL) == 1) {
+        data_len = recv_buf(buf, MAX_LEN, client->sk_num, client, &flag, &seq_num);
+        if (data_len == CRC_ERROR) {
+            returnValue = WAIT_CLIENT_END;
+        } else {
+            printf("Client exited - server now exiting\n");
+        }
+    } else {
+        printf("File transfer completed!\n");
+    }
+
+    return returnValue;
+}
+
+void send_RR(Connection *client, uint32_t seq_num) {
+    uint32_t nseq_num = htonl(seq_num);
+    uint8_t buf[MAX_LEN];
+    uint8_t packet[MAX_LEN];
+    memcpy(buf, &nseq_num, SEQ_NUM_SIZE);
+
+    printf("sent rr %d\n", seq_num);
+
+    sendBuf(buf, SEQ_NUM_SIZE, client, RR, seq_num, packet);
+}
+
+void send_SREJ(Connection *client, uint32_t seq_num) {
+    uint32_t nseq_num = htonl(seq_num);
+    uint8_t buf[MAX_LEN];
+    uint8_t packet[MAX_LEN];
+    memcpy(buf, &nseq_num, SEQ_NUM_SIZE);
+
+    printf("sent srej %d\n", seq_num);
+
+    sendBuf(buf, SEQ_NUM_SIZE, client, SREJ, seq_num, packet);
 }
 
 int processArgs(int argc, char **argv) {
