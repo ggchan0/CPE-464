@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     int portNumber = 0;
 
     portNumber = processArgs(argc, argv);
-    sendtoErr_init(atof(argv[1]), DROP_ON, FLIP_ON, DEBUG_OFF, RSEED_ON);
+    sendtoErr_init(atof(argv[1]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
 
     sk_num = udpServerSetup(portNumber);
 
@@ -65,9 +65,7 @@ void processServer(int sk_num) {
     while(1) {
         if (select_call(sk_num, LONG_TIME, 0, SET_NULL) == 1) {
             recv_len = recv_buf(buf, MAX_LEN, sk_num, &client, &flag, &seq_num);
-            printf("recv %d\n", recv_len);
             if (recv_len != CRC_ERROR) {
-                printf("forked!\n");
                 if ((pid = fork()) < 0) {
                     perror("fork");
                     exit(-1);
@@ -126,7 +124,6 @@ void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client) {
         }
     }
 
-    printf("Child exiting\n");
     exit(0);
 }
 
@@ -185,8 +182,7 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
     if (*data_received = 0) {
         returnValue = processSelect(client, retryCount, ACK_CLIENT, RECV_DATA, DONE);
         if (returnValue != RECV_DATA) {
-            printf("Here %d\n", returnValue);
-            return returnValue;
+            return ACK_CLIENT;
         }
     } else if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
         printf("No data from client in %d seconds, shutting down\n", LONG_TIME);
@@ -197,17 +193,14 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
 
     data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
-    printf("received data of len %d\n", data_len);
-
     if (data_len == CRC_ERROR) {
         return RECV_DATA;
     }
 
-    if (flag == END) {
-        return WAIT_CLIENT_END;
-    }
-
-    if (flag == DATA) {
+    if (flag == END_OF_FILE) {
+        sendBuf(buf, 0, client, END_OF_FILE, 0, packet);
+        returnValue = WAIT_CLIENT_END;
+    } else if (flag == DATA) {
         if (seq_num == window->bottom) {
             insertIntoWindow(window, packet, data_len, seq_num);
             slideWindow(window, window->bottom + 1);
@@ -244,12 +237,6 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
 
     if (data_len == CRC_ERROR) {
         return RECOVER_MISSING_PACKETS;
-    } else if (flag == END_OF_FILE) {
-        if (window->bottom == seq_num) {
-            return DONE;
-        } else {
-            return RECOVER_MISSING_PACKETS;
-        }
     } else if (seq_num >= window->bottom && seq_num <= window->top) {
         insertIntoWindow(window, buf, data_len, seq_num);
         for (i = window->bottom; i <= window->top; i++) {
@@ -282,7 +269,7 @@ STATE wait_client_end(Connection *client, uint8_t *buf) {
     uint8_t flag = 0;
     uint32_t seq_num = 0;
     uint32_t data_len = 0;
-    if (select_call(client->sk_num, SHORT_TIME, 0, NOT_NULL) == 1) {
+    if (select_call(client->sk_num, SHORT_TIME * 2, 0, NOT_NULL) == 1) {
         data_len = recv_buf(buf, MAX_LEN, client->sk_num, client, &flag, &seq_num);
         if (data_len == CRC_ERROR) {
             returnValue = WAIT_CLIENT_END;
@@ -290,7 +277,7 @@ STATE wait_client_end(Connection *client, uint8_t *buf) {
             printf("Client exited - server now exiting\n");
         }
     } else {
-        printf("File transfer completed!\n");
+        printf("Exiting, file successfully downloaded\n");
     }
 
     return returnValue;
@@ -302,8 +289,6 @@ void send_RR(Connection *client, uint32_t seq_num) {
     uint8_t packet[MAX_LEN];
     memcpy(buf, &nseq_num, SEQ_NUM_SIZE);
 
-    printf("sent rr %d\n", seq_num);
-
     sendBuf(buf, SEQ_NUM_SIZE, client, RR, seq_num, packet);
 }
 
@@ -312,8 +297,6 @@ void send_SREJ(Connection *client, uint32_t seq_num) {
     uint8_t buf[MAX_LEN];
     uint8_t packet[MAX_LEN];
     memcpy(buf, &nseq_num, SEQ_NUM_SIZE);
-
-    printf("sent srej %d\n", seq_num);
 
     sendBuf(buf, SEQ_NUM_SIZE, client, SREJ, seq_num, packet);
 }

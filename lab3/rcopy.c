@@ -32,7 +32,7 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
 STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size, int *last_seq_num);
 STATE process(Connection *server, Window *window, int *last_seq_num);
 STATE wait_on_ack(Connection *server, Window *window, int *retryCount);
-STATE exit_rcopy(Connection *server);
+STATE exit_rcopy(Connection *server, int *retryCount);
 void process_args(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
                 state = wait_on_ack(&server, &window, &retryCount);
                 break;
             case EXIT:
-                state = exit_rcopy(&server);
+                state = exit_rcopy(&server, &retryCount);
                 break;
             case DONE:
                 break;
@@ -233,9 +233,22 @@ STATE wait_on_ack(Connection *server, Window *window, int *retryCount) {
     return PROCESS_SERVER_RESPONSE;
 }
 
-STATE exit_rcopy(Connection *server) {
+STATE exit_rcopy(Connection *server, int *retryCount) {
     uint8_t response = 0;
     uint8_t packet[MAX_LEN];
+
+    if (*retryCount > MAX_TRIES) {
+        printf("Sent exit packet %d times, quitting\n", MAX_TRIES);
+        return DONE;
+    }
+
+    sendBuf(&response, 0, server, END_OF_FILE, 0, packet);
+
+    if (select_call(server->sk_num, SHORT_TIME, 0, NOT_NULL) == 0) {
+        (*retryCount)++;
+        return EXIT;
+    }
+
     sendBuf(&response, 0, server, END, 0, packet);
 
     return DONE;

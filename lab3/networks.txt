@@ -1,0 +1,28 @@
+
+// Hugh Smith April 2017
+// Network code to support TCP/UDP client and server connections
+// Code taken from Stop and Wait design and modified for Selective Reject
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+#include "networks.h"
+#include "gethostbyname.h"
+#include "cpe464.h"
+
+int safeSend(uint8_t *packet, uint32_t len, Connection *connection) {
+	int send_len = 0;
+
+	if ((send_len = sendtoErr(connection->sk_num, packet, len, 0, (struct sockaddr *) &(connection->remote), sizeof(struct sockaddr_in6))) < 0) {
+		perror("in send_buf(), send
