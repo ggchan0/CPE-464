@@ -29,7 +29,7 @@ enum State {
 
 int startConnection(char **argv, Connection *server);
 int sendFilename(char *filename, int bufSize, int windowSize, Connection *server);
-STATE sendData(Connection *server, int data_file, int *expected_seq_num, Window *window);
+STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size);
 void process_args(int argc, char **argv);
 
 int main(int argc, char **argv) {
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
                 state = sendData(&server, data_file, &expected_seq_num, &window, atoi(argv[2]));
                 exit(0);
                 break;
-            case PROCESS_SERVER_RESPONSE
+            case PROCESS_SERVER_RESPONSE:
                 //state = process(&server, data_file, &expected_seq_num, &window, atoi(argv[2]));
                 exit(0);
                 break;
@@ -135,7 +135,6 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
 
     return returnValue;
 }
-void insertIntoWindow(Window *window, uint8_t *packet, int packetLen, int seq_num)
 
 STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size) {
     uint8_t buf[MAX_LEN];
@@ -156,18 +155,18 @@ STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, 
             returnValue = DONE;
             break;
         case 0:
-            packet_len = send_buf(buf, 0, server, END_OF_FILE, *seq_num, packet);
+            packet_len = sendBuf(buf, 0, server, END_OF_FILE, *seq_num, packet);
             returnValue = DONE;
             break;
         default:
             insertIntoWindow(window, buf, len_read, *seq_num);
-            send_buf(buf, len_read, DATA, *seq_num, packet);
+            sendBuf(buf, len_read, server, DATA, *seq_num, packet);
             *(seq_num)++;
             returnValue = PROCESS_SERVER_RESPONSE;
             break;
     }
 
-    if (select_call(client->sk_num, 0, 0, NOT_NULL) == 0) {
+    if (select_call(server->sk_num, 0, 0, NOT_NULL) == 0) {
         returnValue = PROCESS_SERVER_RESPONSE;
     }
 
@@ -179,14 +178,14 @@ STATE process(Connection *server, Window *window) {
     int buf_size = 0;
     uint8_t buf[MAX_LEN];
     uint8_t packet[MAX_LEN]; 
-    uint8_t flag;
-    uint32_t seq_num;
+    uint8_t flag = 0;
+    uint32_t seq_num = 0;
     
-    if (select_call(client->sk_num, 0, 0, NOT_NULL) == 0) {
+    if (select_call(server->sk_num, 0, 0, NOT_NULL) == 0) {
         return SEND_DATA;
     }
 
-    len_read = recv_buf(buf, MAX_LEN, connection->sk_num, connection, &flag, &seq_num);
+    len_read = recv_buf(buf, MAX_LEN, server->sk_num, server, &flag, &seq_num);
     seq_num = ntohl(seq_num);
 
     if (flag == RR) {
@@ -194,20 +193,20 @@ STATE process(Connection *server, Window *window) {
             slideWindow(window, seq_num);
         }
     } else if (flag == SREJ) {
-        loadFromWindow(window, buf, &buf_size, &seq_num);
-        send_buf(buf, buf_size, DATA, seq_num, packet);
+        loadFromWindow(window, buf, &buf_size, seq_num);
+
+        sendBuf(buf, buf_size, server, DATA, seq_num, packet);
     }
 
     return SEND_DATA;
 }
 
 STATE wait_on_acks(Connection *server, Window *window, int *retryCount) {
-    int len_read = 0;
-    int buf_size = 0;
+    uint32_t len_read = 0;
+    uint32_t buf_size = 0;
     uint8_t buf[MAX_LEN];
     uint8_t packet[MAX_LEN];
-    uint8_t flag;
-    uint32_t seq_num;
+    uint8_t flag = 0;
 
     if (*retryCount > MAX_TRIES) {
         printf("Sent packet %d times, quitting\n", MAX_TRIES);
@@ -215,8 +214,8 @@ STATE wait_on_acks(Connection *server, Window *window, int *retryCount) {
     }
 
     if (select_call(server->sk_num, SHORT_TIME, 0, NOT_NULL) == 1) {
-        loadFromWindow(window, buf, &buf_size, &seq_num);
-        send_buf(buf, buf_size, DATA, seq_num, packet);
+        loadFromWindow(window, buf, &buf_size, window->bottom);
+        sendBuf(buf, buf_size, server, DATA, window->bottom, packet);
 
         return WAIT_ON_ACK;
     }

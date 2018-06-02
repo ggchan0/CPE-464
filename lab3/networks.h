@@ -90,7 +90,7 @@ int recv_buf(uint8_t *buf, int len, int sk_num, Connection *connection, uint8_t 
 int createHeader(uint32_t len, uint8_t flag, uint32_t seq_num, uint8_t *packet);
 int retrieveHeader(char *data_buf, int recv_len, uint8_t *flag, uint32_t *seq_num);
 void insertIntoWindow(Window *window, uint8_t *packet, int packetLen, int seq_num);
-void loadFromWindow(Window *window, uint8_t *packet, int seq_num);
+void loadFromWindow(Window *window, uint8_t *packet, uint32_t *len_read, int seq_num);
 void removeFromWindow(Window *window, uint8_t *packet, int seq_num);
 void slideWindow(Window *window, int new_bottom);
 void freeWindow(Window *window);

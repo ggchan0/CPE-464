@@ -131,7 +131,8 @@ void loadFromWindow(Window *window, uint8_t *packet, uint32_t *len_read, int seq
 
 void removeFromWindow(Window *window, uint8_t *packet, int seq_num) {
 	int index = seq_num % window->size;
-	loadFromWindow(window, packet, seq_num);
+	int *buf_size = 0;
+	loadFromWindow(window, packet, buf_size, seq_num);
 	window->isValid[index] = 0;
 }
 
@@ -152,9 +153,8 @@ void slideWindow(Window *window, int new_bottom) {
 void freeWindow(Window *window) {
 	int i;
 	for (i = 0; i < window->size; i++) {
-		windowBuf *b = window->buf[i];
-		free(b->buffer);
-		free(b);
+		windowBuf b = window->buf[i];
+		free(b.buffer);
 	}
 	free(window->buf);
 	free(window->isValid);
@@ -169,7 +169,6 @@ void initWindow(Window *window, int buf_size, int window_size) {
 	window->isValid = checked_calloc(sizeof(uint8_t) * window_size);
 	window->buf = checked_calloc(sizeof(windowBuf *) * window_size);
 	for (i = 0; i < window_size; i++) {
-		(window->buf)[i] = checked_calloc(sizeof(windowBuf));
 		(window->buf)[i].buffer = checked_calloc(sizeof(uint8_t) * buf_size  + HEADER_SIZE);
 	}
 }
