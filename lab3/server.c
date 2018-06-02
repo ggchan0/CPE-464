@@ -75,6 +75,8 @@ void processServer(int sk_num) {
                     processClient(sk_num, buf, recv_len, &client);
                     exit(0);
                 }
+
+
             }
 
             while (waitpid(-1, &status, WNOHANG) > 0) {
@@ -189,16 +191,22 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
         return DONE;
     }
 
-    *data_received = 1;
-
     data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
     if (data_len == CRC_ERROR) {
         return RECV_DATA;
     }
 
+    if (flag == FILENAME_REQ) {
+        return ACK_CLIENT;
+    }
+
+    *data_received = 1;
+
+
+
     if (flag == END_OF_FILE) {
-        sendBuf(buf, 0, client, END_OF_FILE, 0, packet);
+        sendBuf(buf, 0, client, END, 0, packet);
         returnValue = WAIT_CLIENT_END;
     } else if (flag == DATA) {
         if (seq_num == window->bottom) {

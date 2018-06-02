@@ -152,10 +152,11 @@ STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, 
         return WAIT_ON_ACK;
     }
 
-    len_read = read(data_file, buf, buf_size);
     if (*last_seq_num > 0) {
         return WAIT_ON_ACK;
     }
+
+    len_read = read(data_file, buf, buf_size);
 
     switch(len_read) {
         case -1:
@@ -193,8 +194,9 @@ STATE process(Connection *server, Window *window, int *last_seq_num) {
 
     len_read = recv_buf(buf, MAX_LEN, server->sk_num, server, &flag, &seq_num);
 
-    if (flag == RR && seq_num >= window->bottom) {
-        if (seq_num == *last_seq_num) {
+    if (flag == RR) {
+        if (seq_num >= *last_seq_num && *last_seq_num != 0) {
+            printf("here!\n");
             return EXIT;
         } else if (seq_num >= window->bottom) {
             slideWindow(window, seq_num);
