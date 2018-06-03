@@ -8,7 +8,7 @@ fi
 # ===============================
 APP_SERVER=server
 APP_CLIENT=rcopy
-PIDOF=`which pidof`
+PIDOF=`which pgrep`
 # ===============================
 
 function clear_defs {
@@ -67,7 +67,7 @@ sleep 1
 echo "========== CLIENT ==========="
 export CPE464_OVERRIDE_PORT=
 export CPE464_OVERRIDE_SEEDRAND=2
-./$APP_CLIENT $FILE $FILEOUT $SIZE $ERROR $WIN $SERVER $PORT
+./$APP_CLIENT $FILE $FILEOUT $WIN $SIZE $ERROR $SERVER $PORT
 APP_CLIENT_RES=$?
 
 echo "========== RESULTS ==========="

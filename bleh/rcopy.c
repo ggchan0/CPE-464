@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
     process_args(argc, argv);
     data_file = open(argv[1], O_RDONLY);
     sendErr_init(atof(argv[5]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
-    initWindow(&window, atoi(argv[4]), atoi(argv[3]));
+    initWindow(&window, atoi(argv[3]), atoi(argv[4]));
     int last_seq_num = 0;
 
     while (state != DONE) {
@@ -56,10 +56,10 @@ int main(int argc, char **argv) {
                 state = startConnection(argv, &server);
                 break;
             case FILENAME:
-                state = sendFilename(argv[2], atoi(argv[4]), atoi(argv[3]), &server);
+                state = sendFilename(argv[2], atoi(argv[3]), atoi(argv[4]), &server);
                 break;
             case SEND_DATA:
-                state = sendData(&server, data_file, &expected_seq_num, &window, atoi(argv[4]), &last_seq_num);
+                state = sendData(&server, data_file, &expected_seq_num, &window, atoi(argv[3]), &last_seq_num);
                 break;
             case PROCESS_SERVER_RESPONSE:
                 state = process(&server, &window, &last_seq_num);
@@ -260,7 +260,7 @@ STATE exit_rcopy(Connection *server, int *retryCount) {
 
 void process_args(int argc, char **argv) {
     if (argc != 8) {
-        printf("Usage %s fromFile toFile window_size buffer_size error_rate hostname port\n", argv[0]);
+        printf("Usage %s fromFile toFile buffer_size window_size error_rate hostname port\n", argv[0]);
         exit(-1);
     } else if (strlen(argv[1]) > 100) {
         printf("fromFile name needs to be less than 100 characters and is %d\n", (int) strlen(argv[1]));
@@ -274,14 +274,14 @@ void process_args(int argc, char **argv) {
     } else if (strlen(argv[2]) > 100) {
         printf("toFile name needs to be less than 100 characters and is %d\n", (int) strlen(argv[2]));
         exit(-1);
-    } else if (atoi(argv[4]) < 400 || atoi(argv[4]) > 1400) {
-        printf("Buffer size needs to be between 400 and 1400 and is %s\n", argv[4]);
+    } else if (atoi(argv[3]) < 400 || atoi(argv[3]) > 1400) {
+        printf("Buffer size needs to be between 400 and 1400 and is %s\n", argv[3]);
         exit(-1);
-    } else if (atoi(argv[3]) <= 0) {
-        printf("Window size needs to be a positive integer and is %s\n", argv[3]);
+    } else if (atoi(argv[4]) <= 0) {
+        printf("Window size needs to be a positive integer and is %s\n", argv[4]);
         exit(-1);
     } else if (atof(argv[5]) < 0 || atof(argv[5]) >= 1) {
-        printf("Error rate needs to be between 0 and 1 and is %s\n", argv[5]);
+        printf("Error rate needs to be between 0 and 1 and is %s\n", argv[4]);
         exit(-1);
     }
 }
