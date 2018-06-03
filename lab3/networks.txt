@@ -296,16 +296,3 @@ int select_call(int sk_num, int sec, int microsec, int set_null) {
 		return 0;
 	}
 }
-um, &fdvar);
-
-	if (select(sk_num + 1, (fd_set *) &fdvar, (fd_set *) 0, (fd_set *) 0, timeout) < 0) {
-		perror("select");
-		exit(-1);
-	}
-
-	if (FD_ISSET(sk_num, &fdvar)) {
-		return 1;
-	} else {
-		return 0;
-	}
-}

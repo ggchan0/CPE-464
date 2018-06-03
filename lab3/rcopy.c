@@ -31,7 +31,7 @@ int startConnection(char **argv, Connection *server);
 int sendFilename(char *filename, int bufSize, int windowSize, Connection *server);
 STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size, int *last_seq_num);
 STATE process(Connection *server, Window *window, int *last_seq_num);
-STATE wait_on_ack(Connection *server, Window *window, int *retryCount);
+STATE wait_on_ack(Connection *server, Window *window, int *retryCount, int *last_seq_num);
 STATE exit_rcopy(Connection *server, int *retryCount);
 void process_args(int argc, char **argv);
 
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
                 state = process(&server, &window, &last_seq_num);
                 break;
             case WAIT_ON_ACK:
-                state = wait_on_ack(&server, &window, &retryCount);
+                state = wait_on_ack(&server, &window, &retryCount, &last_seq_num);
                 break;
             case EXIT:
                 state = exit_rcopy(&server, &retryCount);
@@ -152,10 +152,6 @@ STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, 
         return WAIT_ON_ACK;
     }
 
-    if (*last_seq_num > 0) {
-        return WAIT_ON_ACK;
-    }
-
     len_read = read(data_file, buf, buf_size);
 
     switch(len_read) {
@@ -194,14 +190,17 @@ STATE process(Connection *server, Window *window, int *last_seq_num) {
 
     len_read = recv_buf(buf, MAX_LEN, server->sk_num, server, &flag, &seq_num);
 
+    if (len_read == CRC_ERROR) {
+        return WAIT_ON_ACK;
+    }
+
     if (flag == RR) {
-        if (seq_num >= *last_seq_num && *last_seq_num != 0) {
+        if (seq_num == *last_seq_num) {
             printf("here!\n");
             return EXIT;
         } else if (seq_num >= window->bottom) {
             slideWindow(window, seq_num);
         }
-
     } else if (flag == SREJ) {
         loadFromWindow(window, buf, &buf_size, seq_num);
 
@@ -211,7 +210,7 @@ STATE process(Connection *server, Window *window, int *last_seq_num) {
     return PROCESS_SERVER_RESPONSE;
 }
 
-STATE wait_on_ack(Connection *server, Window *window, int *retryCount) {
+STATE wait_on_ack(Connection *server, Window *window, int *retryCount, int *last_seq_num) {
     uint32_t len_read = 0;
     uint32_t buf_size = 0;
     uint8_t buf[MAX_LEN];
@@ -222,9 +221,15 @@ STATE wait_on_ack(Connection *server, Window *window, int *retryCount) {
         printf("Sent packet %d times, quitting\n", MAX_TRIES);
         return DONE;
     }
-
+    
     if (select_call(server->sk_num, SHORT_TIME, 0, NOT_NULL) == 0) {
-        (*retryCount)++;
+        (*retryCount) += 1;
+
+        if (*last_seq_num == window->bottom) {
+            printf("%d %d\n", *last_seq_num, window->bottom);
+            return WAIT_ON_ACK;
+        }
+
         loadFromWindow(window, buf, &buf_size, window->bottom);
         sendBuf(buf, buf_size, server, DATA, window->bottom, packet);
 
