@@ -1,0 +1,16 @@
+Garrett Chan
+CPE-464 lab3
+Lab Section: Noon/12:00 PM
+Flags Used:
+0 ZERO - unused
+1 SETUP_REQ - unused, request to server from rcopy
+2 SETUP_RES - unused, response from server to rcopy
+3 DATA - data packet from rcopy
+4 UNUSED
+5 RR - RR from server
+6 SREJ - selective reject from server
+7 FILENAME_REQ - request to upload file from rcopy
+8 FILENAME_RES - response to upload file from server, OK to upload
+9 FILENAME_ERR - response to rcopy from server, can't open file for writing
+10 END_OF_FILE - rcopy has finished reading data, server will reply with an END_OF_FILE flag as an ACK to the rcopy's END_OF_FILE packet
+11 END - rcopy to server, terminating rcopy

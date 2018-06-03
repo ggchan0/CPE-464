@@ -72,7 +72,6 @@ void processServer(int sk_num) {
                 }
 
                 if (pid == 0) {
-                    printf("in child\n");
                     processClient(sk_num, buf, recv_len, &client);
                     exit(0);
                 }
@@ -186,32 +185,19 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
     uint8_t packet[MAX_LEN];
     uint32_t data_len = 0;
 
+    //printf("window %d\n", window->bottom);
+
     if (*retryCount > MAX_TRIES) {
-        printf("Server sent packets to client %d times, no response\n", MAX_TRIES);
+        printf("Server waited for client %d seconds, quitting\n", MAX_TRIES);
         return DONE;
     }
 
     if (select_call(client->sk_num, SHORT_TIME, 0, NOT_NULL) == 0) {
         (*retryCount)++;
-        if (*data_received == 0) {
-            return ACK_CLIENT;
-        } else {
-            send_RR(client, window->bottom);
-            return RECV_DATA;
-        }
+        return RECV_DATA;
     }
 
-    /*if (*data_received = 0) {
-        returnValue = processSelect(client, retryCount, ACK_CLIENT, RECV_DATA, DONE);
-        if (returnValue != RECV_DATA) {
-            return ACK_CLIENT;
-        }
-    } else if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
-        printf("No data from client in %d seconds, shutting down\n", LONG_TIME);
-        return DONE;
-    }*/
     *retryCount = 0;
-    *data_received = 1;
 
     data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
@@ -264,7 +250,6 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
     } else if (seq_num >= window->bottom && seq_num <= window->top) {
         insertIntoWindow(window, buf, data_len, seq_num);
         for (i = window->bottom; i <= window->top; i++) {
-            printf("finding gap %d\n", i);
             int index = i % window->size;
             if (window->isValid[index] == 0) {
                 window->middle = i;
@@ -282,8 +267,9 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
             write(*data_file, buf, data_len);
         }
 
-        send_RR(client, window->middle);
         slideWindow(window, window->middle);
+        send_RR(client, window->bottom);
+
 
         return RECV_DATA;
     }

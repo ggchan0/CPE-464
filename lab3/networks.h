@@ -67,10 +67,18 @@ typedef struct header {
    uint8_t flag;
 } __attribute__((packed)) Header;
 
+/*
 typedef struct windowBuf {
     uint32_t buf_size;
     uint32_t seq_num;
     uint8_t *buffer;
+} windowBuf;
+*/
+
+typedef struct windowBuf {
+   uint32_t buf_size;
+   uint32_t seq_num;
+   uint8_t buffer[MAX_LEN];
 } windowBuf;
 
 typedef struct window {
@@ -82,6 +90,7 @@ typedef struct window {
    windowBuf *buf;
    uint8_t *isValid;
 } Window;
+
 
 int safeSend(uint8_t *packet, uint32_t len, Connection *connection);
 int safeRecv(int sk_num, char *data_buf, int len, Connection *connection);

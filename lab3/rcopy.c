@@ -71,6 +71,7 @@ int main(int argc, char **argv) {
                 state = exit_rcopy(&server, &retryCount);
                 break;
             case DONE:
+                freeWindow(&window);
                 break;
 
             default:
@@ -90,10 +91,8 @@ int startConnection(char **argv, Connection *server) {
     }
 
     if (udpClientSetup(argv[6], atoi(argv[7]), server) < 0) {
-        printf("Bad\n");
         returnValue = DONE;
     } else {
-        printf("Good\n");
         returnValue = FILENAME;
     }
 
@@ -114,7 +113,6 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
     static int retryCount = 0;
     int offset = 0;
 
-    printf("payload len %d\n", payloadLen);
     memcpy(buf + offset, &nlWindowSize, WINDOW_LEN_SIZE);
     offset += WINDOW_LEN_SIZE;
     memcpy(buf + offset, &nlBufSize, BUFFER_LEN_SIZE);
@@ -133,7 +131,6 @@ int sendFilename(char *filename, int bufSize, int windowSize, Connection *server
             printf("Error during file open of %s on server\n", filename);
             returnValue = DONE;
         } else if (flag == FILENAME_RES) {
-            printf("Connection good!\n");
             returnValue = SEND_DATA;
         }
     }
@@ -160,7 +157,6 @@ STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, 
             returnValue = DONE;
             break;
         case 0:
-            printf("%d\n", *seq_num);
             *last_seq_num = *seq_num;
             returnValue = WAIT_ON_ACK;
             break;
@@ -169,6 +165,9 @@ STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, 
             window->middle++;
             sendBuf(buf, len_read, server, DATA, *seq_num, packet);
             (*seq_num)++;
+            if (len_read < buf_size) {
+                *last_seq_num =  *seq_num;
+            }
             returnValue = PROCESS_SERVER_RESPONSE;
             break;
     }
@@ -196,7 +195,6 @@ STATE process(Connection *server, Window *window, int *last_seq_num) {
 
     if (flag == RR) {
         if (seq_num == *last_seq_num) {
-            printf("here!\n");
             return EXIT;
         } else if (seq_num >= window->bottom) {
             slideWindow(window, seq_num);
@@ -221,12 +219,11 @@ STATE wait_on_ack(Connection *server, Window *window, int *retryCount, int *last
         printf("Sent packet %d times, quitting\n", MAX_TRIES);
         return DONE;
     }
-    
+
     if (select_call(server->sk_num, SHORT_TIME, 0, NOT_NULL) == 0) {
         (*retryCount) += 1;
 
         if (*last_seq_num == window->bottom) {
-            printf("%d %d\n", *last_seq_num, window->bottom);
             return WAIT_ON_ACK;
         }
 

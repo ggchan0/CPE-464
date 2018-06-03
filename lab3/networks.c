@@ -152,7 +152,7 @@ void freeWindow(Window *window) {
 	int i;
 	for (i = 0; i < window->size; i++) {
 		windowBuf b = window->buf[i];
-		free(b.buffer);
+		//free(b.buffer);
 	}
 	free(window->buf);
 	free(window->isValid);
@@ -166,9 +166,11 @@ void initWindow(Window *window, int buf_size, int window_size) {
 	window->size = window_size;
 	window->isValid = checked_calloc(sizeof(uint8_t) * window_size);
 	window->buf = checked_calloc(sizeof(windowBuf) * window_size);
+	/*
 	for (i = 0; i < window_size; i++) {
 		(window->buf)[i].buffer = checked_calloc(sizeof(uint8_t) * buf_size);
 	}
+	*/
 }
 
 void *checked_calloc(size_t size) {
