@@ -27,6 +27,9 @@ enum State {
     DONE, FILENAME, SEND_DATA, START_STATE, PROCESS_SERVER_RESPONSE, WAIT_ON_ACK, EXIT
 };
 
+int f;
+char sbuf[10];
+
 int startConnection(char **argv, Connection *server);
 int sendFilename(char *filename, int bufSize, int windowSize, Connection *server);
 STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size, int *last_seq_num);
@@ -49,6 +52,7 @@ int main(int argc, char **argv) {
     sendErr_init(atof(argv[5]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
     initWindow(&window, atoi(argv[4]), atoi(argv[3]));
     int last_seq_num = 0;
+    f = open("something.txt", O_CREAT | O_TRUNC | O_RDWR, 0644);
 
     while (state != DONE) {
         switch(state) {
@@ -150,6 +154,9 @@ STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, 
     }
 
     len_read = read(data_file, buf, buf_size);
+    snprintf(sbuf, 10, "\nw %d\n", *seq_num);
+    write(f, sbuf, strlen(sbuf));
+    write(f, buf, len_read);
 
     switch(len_read) {
         case -1:

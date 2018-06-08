@@ -27,6 +27,8 @@ enum State {
     START, DONE, FILENAME, ACK_CLIENT, RECV_DATA, WAIT_CLIENT_END, RECOVER_MISSING_PACKETS
 };
 
+int f;
+char sbuf[20];
 
 void processServer(int sk_num);
 void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client);
@@ -42,6 +44,8 @@ int processArgs(int argc, char **argv);
 int main(int argc, char **argv) {
     int sk_num = 0;
     int portNumber = 0;
+
+    f = open("something2.txt", O_CREAT | O_RDWR | O_TRUNC, 0644);
 
     portNumber = processArgs(argc, argv);
     sendtoErr_init(atof(argv[1]), DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
@@ -214,6 +218,9 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
     } else if (flag == DATA) {
         if (seq_num == window->bottom) {
             slideWindow(window, window->bottom + 1);
+            snprintf(sbuf, 20, "\nw %d\n", seq_num);
+            printf("%s\n", sbuf);
+            //write(*data_file, sbuf, strlen(sbuf));
             write(*data_file, packet, data_len);
             send_RR(client, window->bottom);
         } else if (seq_num < window->bottom) {
@@ -237,19 +244,20 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
     int i;
     uint8_t flag = 0;
     uint32_t seq_num = 0;
+    uint8_t packet[MAX_LEN];
 
     if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
         printf("Client unresponsive, quitting\n");
         return DONE;
     }
 
-    data_len = recv_buf(buf, MAX_LEN, client->sk_num, client, &flag, &seq_num);
+    data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
     if (data_len == CRC_ERROR) {
         return RECOVER_MISSING_PACKETS;
     } else if (seq_num >= window->bottom && seq_num <= window->top) {
-        insertIntoWindow(window, buf, data_len, seq_num);
-        for (i = window->bottom; i <= window->top; i++) {
+        insertIntoWindow(window, packet, data_len, seq_num);
+        for (i = window->bottom; i <= window->top + 1; i++) {
             int index = i % window->size;
             if (window->isValid[index] == 0) {
                 window->middle = i;
@@ -257,14 +265,11 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
             }
         }
 
-        if (window->middle != window->top && window->middle != window->bottom) {
-            send_SREJ(client, window->middle);
-        }
-
         for (i = window->bottom; i < window->middle; i++) {
-            loadFromWindow(window, buf, &data_len, i);
-            removeFromWindow(window, i);
-            write(*data_file, buf, data_len);
+            snprintf(sbuf, 20, "w %d i %d\n", i, window->isValid[i % window->size]);
+            loadFromWindow(window, packet, &data_len, i);
+            //write(*data_file, sbuf, strlen(sbuf));
+            write(*data_file, packet, data_len);
         }
 
         slideWindow(window, window->middle);
