@@ -257,10 +257,6 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
             }
         }
 
-        if (window->middle != window->top && window->middle != window->bottom) {
-            send_SREJ(client, window->middle);
-        }
-
         for (i = window->bottom; i < window->middle; i++) {
             loadFromWindow(window, buf, &data_len, i);
             removeFromWindow(window, i);
