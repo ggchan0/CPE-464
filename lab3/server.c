@@ -183,6 +183,7 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
     uint32_t seq_num = 0;
     uint8_t packet[MAX_LEN];
     uint32_t data_len = 0;
+    int i;
 
     //printf("window %d\n", window->bottom);
 
@@ -212,8 +213,16 @@ STATE recv_data(Connection *client, uint8_t *buf, int *data_file, int *data_rece
         returnValue = WAIT_CLIENT_END;
     } else if (flag == DATA) {
         if (seq_num == window->bottom) {
-            slideWindow(window, window->bottom + 1);
-            write(*data_file, packet, data_len);
+            insertIntoWindow(window, packet, data_len, seq_num);
+            for (i = window->bottom; i < window->top; i++) {
+                if (window->isValid[i % window->size] == 0) {
+                    break;
+                }
+
+                loadFromWindow(window, packet, &data_len, i);
+                write(*data_file, packet, data_len);
+            }
+            slideWindow(window, i);
             send_RR(client, window->bottom);
         } else if (seq_num < window->bottom) {
             send_RR(client, window->bottom);
