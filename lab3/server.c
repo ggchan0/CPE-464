@@ -27,7 +27,6 @@ enum State {
     START, DONE, FILENAME, ACK_CLIENT, RECV_DATA, WAIT_CLIENT_END, RECOVER_MISSING_PACKETS
 };
 
-
 void processServer(int sk_num);
 void processClient(int sk_num, uint8_t *buf, int recv_len, Connection *client);
 STATE filename(Connection *client, uint8_t *buf, int recv_len, int *data_file, uint32_t *buf_size, uint32_t *window_size, Window *window);
@@ -237,19 +236,20 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
     int i;
     uint8_t flag = 0;
     uint32_t seq_num = 0;
+    uint8_t packet[MAX_LEN];
 
     if (select_call(client->sk_num, LONG_TIME, 0, NOT_NULL) == 0) {
         printf("Client unresponsive, quitting\n");
         return DONE;
     }
 
-    data_len = recv_buf(buf, MAX_LEN, client->sk_num, client, &flag, &seq_num);
+    data_len = recv_buf(packet, MAX_LEN, client->sk_num, client, &flag, &seq_num);
 
     if (data_len == CRC_ERROR) {
         return RECOVER_MISSING_PACKETS;
     } else if (seq_num >= window->bottom && seq_num <= window->top) {
-        insertIntoWindow(window, buf, data_len, seq_num);
-        for (i = window->bottom; i <= window->top; i++) {
+        insertIntoWindow(window, packet, data_len, seq_num);
+        for (i = window->bottom; i <= window->top + 1; i++) {
             int index = i % window->size;
             if (window->isValid[index] == 0) {
                 window->middle = i;
@@ -258,9 +258,8 @@ STATE recover_missing_packets(Connection *client, uint8_t *buf, int *data_file, 
         }
 
         for (i = window->bottom; i < window->middle; i++) {
-            loadFromWindow(window, buf, &data_len, i);
-            removeFromWindow(window, i);
-            write(*data_file, buf, data_len);
+            loadFromWindow(window, packet, &data_len, i);
+            write(*data_file, packet, data_len);
         }
 
         slideWindow(window, window->middle);

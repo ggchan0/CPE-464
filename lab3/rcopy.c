@@ -27,6 +27,7 @@ enum State {
     DONE, FILENAME, SEND_DATA, START_STATE, PROCESS_SERVER_RESPONSE, WAIT_ON_ACK, EXIT
 };
 
+
 int startConnection(char **argv, Connection *server);
 int sendFilename(char *filename, int bufSize, int windowSize, Connection *server);
 STATE sendData(Connection *server, int data_file, int *seq_num, Window *window, int buf_size, int *last_seq_num);
